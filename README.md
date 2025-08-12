@@ -51,7 +51,7 @@ If you already built the project:
   # For Python 3.x
   python -m http.server 8000
   ```
-###Using Node.js http-server
+### Using Node.js http-server
 If you have Node.js installed, install http-server globally:
  ```bash
 npm install -g http-server
