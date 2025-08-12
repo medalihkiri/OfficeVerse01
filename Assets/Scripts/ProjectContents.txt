@@ -1,0 +1,5492 @@
+Project Hierarchy:
+Scripts
+--Agora
+----AgoraClientManager.cs
+----SpatialRoom.cs
+--Avatar
+----AvatarSelection.cs
+----CharacterManager.cs
+--Camera
+----CameraController.cs
+----Zoom.cs
+--Chat
+----TMPWebGLInputFieldExtension.cs
+--Game
+----CreateAndJoin.cs
+----EmojiButtonController.cs
+----GameChatManager.cs
+----GameManager.cs
+----SeparatedRoomLight.cs
+----UserControlsUI.cs
+--Player
+----InteractionManager.cs
+----PlayerController.cs
+----PlayerDataManager.cs
+----PlayerProfile.cs
+----SpatialAudio.cs
+--UI
+----AvailabilityManager.cs
+----ButtonHoverEffect.cs
+----EmojiButtonClickHandler.cs
+----EmojiChatButtonController.cs
+----InputFieldHoverEffect.cs
+----Participants.cs
+----PrivateChat.cs
+----PrivateChatManager.cs
+----TooltipResizer.cs
+
+--------------------------------------------------
+File: AgoraClientManager.cs
+Contents:
+using UnityEngine;
+using agora_gaming_rtc;
+using Photon.Pun;
+
+public class AgoraClientManager : MonoBehaviour
+{
+    [SerializeField] private string appId;
+
+    [SerializeField] private string CHANNEL_NAME = "";
+
+    public IRtcEngine mRtcEngine = null;
+
+    private void Start()
+    {
+        if (!CheckAppId())
+        {
+            Debug.LogError("<color=red>[STOP] Please fill in your appId in your AppIDInfo Object!!!! \n (Assets/API-Example/_AppIDInfo/AppIDInfo)</color>");
+
+            return;
+        }
+
+        InitEngine();
+    }
+
+    bool CheckAppId()
+    {
+        return appId.Length > 10;
+    }
+
+    void InitEngine()
+    {
+        mRtcEngine = IRtcEngine.GetEngine(appId);
+
+        Debug.Log("########## Agora Engine version : " + IRtcEngine.GetSdkVersion());
+
+        mRtcEngine.SetChannelProfile(CHANNEL_PROFILE.CHANNEL_PROFILE_LIVE_BROADCASTING);
+        mRtcEngine.SetClientRole(CLIENT_ROLE_TYPE.CLIENT_ROLE_BROADCASTER);
+
+        mRtcEngine.EnableAudio();
+        mRtcEngine.EnableVideo();
+        mRtcEngine.EnableVideoObserver();
+
+        mRtcEngine.OnJoinChannelSuccess += OnJoinChannelSuccessHandler;
+        mRtcEngine.OnLeaveChannel += OnLeaveChannelHandler;
+
+        mRtcEngine.OnScreenShareStarted += OnScreenShareStarted;
+        mRtcEngine.OnScreenShareStopped += OnScreenShareStopped;
+        mRtcEngine.OnScreenShareCanceled += OnScreenShareCancelled;
+
+        mRtcEngine.OnRemoteAudioStateChanged += (id, state, reason, other) =>
+        {
+            Debug.Log("########## OnRemoteAudioStateChanged " + id + " state: " + state + " reason: " + reason);
+        };
+
+        mRtcEngine.OnRemoteVideoStateChanged += (id, state, reason, other) =>
+        {
+            Debug.Log("########## OnRemoteVideoStateChanged " + id + " state: " + state + " reason: " + reason);
+        };
+
+        mRtcEngine.OnLocalAudioStateChanged += OnLocalAudioStateChanged;
+        mRtcEngine.OnLocalVideoStateChanged += OnLocalVideoStateChanged;
+
+        mRtcEngine.OnUserMuteVideo += (id, muted) =>
+        {
+            Debug.Log("########## OnUserMuteVideo " + " id: " + id + " muted: " + muted);
+        };
+
+        mRtcEngine.OnUserJoined += OnUserJoinedHandler;
+        mRtcEngine.OnUserOffline += OnUserOfflineHandler;
+
+        mRtcEngine.OnError += OnErrorHandler;
+    }
+
+    public void JoinChannel()
+    {
+        CHANNEL_NAME = PhotonNetwork.CurrentRoom.Name;
+
+        var options = new ChannelMediaOptions(true, true, true, true);
+
+        mRtcEngine.JoinChannel(null, CHANNEL_NAME, "", (uint)GameManager.Instance.myPlayer.view.ViewID, options);
+    }
+
+    public void LeaveChannel()
+    {
+        mRtcEngine.LeaveChannel();
+    }
+
+    void OnJoinChannelSuccessHandler(string channelId, uint uid, int elapsed)
+    {
+        Debug.Log($"########## OnJoinChannelSuccess channelId: {CHANNEL_NAME}, uid: {uid}, elapsed: {elapsed}");
+
+        SetLocalAudioState(false);
+        SetLocalVideoState(false);
+
+        SetVideoSurfaceForPlayer(uid, 0);
+    }
+
+    void OnLeaveChannelHandler(RtcStats rtcStats)
+    {
+        Debug.Log($"########## OnLeaveChannelHandler channelId: {CHANNEL_NAME}");
+    }
+
+    void OnErrorHandler(int err, string message)
+    {
+        Debug.Log($"########## UserErrorHandler err: {err}, message: {message}");
+    }
+
+    void OnUserJoinedHandler(uint uid, int elapsed)
+    {
+        Debug.Log($"########## OnUserJoinedHandler channelId: {CHANNEL_NAME} uid: {uid} elapsed: {elapsed}");
+        SetVideoSurfaceForPlayer(uid, 0);
+    }
+
+    void OnUserOfflineHandler(uint uid, USER_OFFLINE_REASON reason)
+    {
+        Debug.Log($"########## OnUserOffLine uid: ${uid}, reason: ${reason}");
+    }
+
+    void OnScreenShareStarted(string channelName, uint uid, int elapsed)
+    {
+        Debug.Log($"########## OnScreenShareStarted channel: {channelName} id: {uid} elapsed: {elapsed}");
+        UpdateScreenShareState(true, uid);
+    }
+
+    void OnScreenShareStopped(string channelName, uint uid, int elapsed)
+    {
+        GameObject.Find("ControlsCanvas").GetComponent<UserControlsUI>().ScreenShareEnabled = false;
+
+        Debug.Log($"########## OnScreenShareStopped channel: {channelName} id: {uid} elapsed: {elapsed}");
+        UpdateScreenShareState(false, uid);
+    }
+
+    void OnScreenShareCancelled(string channelName, uint uid, int elapsed)
+    {
+        GameObject.Find("ControlsCanvas").GetComponent<UserControlsUI>().ScreenShareEnabled = false;
+
+        Debug.Log($"########## OnScreenShareCancelled channel: {channelName} id: {uid} elapsed: {elapsed}");
+        UpdateScreenShareState(false, uid);
+    }
+
+    void OnLocalAudioStateChanged(LOCAL_AUDIO_STREAM_STATE state, LOCAL_AUDIO_STREAM_ERROR reason)
+    {
+        Debug.Log($"########## OnLocalAudioStateChanged state: {state} reason: {reason}");
+
+        bool enable = state == LOCAL_AUDIO_STREAM_STATE.LOCAL_AUDIO_STREAM_STATE_RECORDING || state == LOCAL_AUDIO_STREAM_STATE.LOCAL_AUDIO_STREAM_STATE_ENCODING;
+
+        GameManager.Instance.myPlayer.SendAudioState(enable);
+    }
+
+    void OnLocalVideoStateChanged(LOCAL_VIDEO_STREAM_STATE state, LOCAL_VIDEO_STREAM_ERROR reason)
+    {
+        Debug.Log($"########## OnLocalVideoStateChanged state: {state} reason: {reason}");
+
+        bool enable = state == LOCAL_VIDEO_STREAM_STATE.LOCAL_VIDEO_STREAM_STATE_CAPTURING || state == LOCAL_VIDEO_STREAM_STATE.LOCAL_VIDEO_STREAM_STATE_ENCODING;
+
+        GameManager.Instance.myPlayer.SendVideoState(enable);
+    }
+
+    //for enabling/disabling local video through IRtcEngine class.
+    public void SetLocalVideoState(bool enable)
+    {
+        if (mRtcEngine == null) return;
+
+        mRtcEngine.EnableLocalVideo(enable);
+
+        GameManager.Instance.myPlayer.SendVideoState(enable);
+    }
+
+    public void SetLocalAudioState(bool enable)
+    {
+        if (mRtcEngine == null) return;
+
+        mRtcEngine.EnableLocalAudio(enable);
+
+        GameManager.Instance.myPlayer.SendAudioState(enable);
+    }
+
+    //for starting/stopping a new screen share through IRtcEngine class.
+    public void SetScreenShareState(bool enable)
+    {
+        if (enable)
+        {
+            mRtcEngine.StartScreenCaptureForWeb(false);
+        }
+        else
+        {
+            mRtcEngine.StopScreenCapture();
+        }
+    }
+
+    private void UpdateScreenShareState(bool enable, uint uid)
+    {
+        GameManager.Instance.myPlayer.SendScreenShareState(enable);
+
+    }
+
+    private void OnDestroy()
+    {
+        Debug.Log("OnDestroy");
+        if (mRtcEngine != null)
+        {
+            LeaveChannel();
+            mRtcEngine.DisableVideoObserver();
+            IRtcEngine.Destroy();
+        }
+    }
+
+    internal void SetVideoSurfaceForPlayer(uint uid, int elapsed)
+    {
+        PlayerController playerController = null;
+
+        for (int i = 0; i < GameManager.Instance.otherPlayers.Count; i++)
+        {
+            if (GameManager.Instance.otherPlayers[i].view.ViewID == uid)
+            {
+                playerController = GameManager.Instance.otherPlayers[i];
+                break;
+            }
+        }
+
+        if (playerController == null)
+        {
+            Debug.LogError("Player Controller is null");
+            return;
+        }
+
+        Debug.Log("Set Video Surface : uid = " + uid + " elapsed = " + elapsed);
+
+        VideoSurface videoSurface = playerController.playerVideoSurface;
+
+        if (!ReferenceEquals(videoSurface, null))
+        {
+            if (uid == GameManager.Instance.myPlayer.view.ViewID)
+            {
+                Debug.Log("Self Player");
+                videoSurface.SetForUser(0);
+            }
+            else
+            {
+                Debug.Log($"{uid} Other Player");
+                videoSurface.SetForUser(uid);
+            }
+
+            videoSurface.SetVideoSurfaceType(AgoraVideoSurfaceType.RawImage);
+            videoSurface.SetEnable(true);
+        }
+    }
+}
+--------------------------------------------------
+File: SpatialRoom.cs
+Contents:
+using System.Collections.Generic;
+using UnityEngine;
+using Photon.Pun;
+using agora_gaming_rtc;
+using FunkyCode;
+using Photon.Realtime;
+
+public class SpatialRoom : MonoBehaviourPunCallbacks
+{
+    private IRtcEngine agoraRtcEngine;
+    private List<PlayerController> playersInside = new List<PlayerController>();
+    private Light2D roomLight;
+    private Light2D activeGlobalLight;
+    private Light2D disabledGlobalLight;
+
+    public static Dictionary<int, int> PlayersInRooms = new Dictionary<int, int>();
+    private static int nextRoomId = 1;
+    private int roomId;
+
+    private HashSet<PlayerController> playersWhoCanSeeScreenShare = new HashSet<PlayerController>();
+
+    public static event System.Action<uint, bool> OnScreenShareVisibilityChanged;
+
+    public static Dictionary<int, bool> PlayersInAnyRoom = new Dictionary<int, bool>();
+
+    private void Awake()
+    {
+        roomId = nextRoomId++;
+    }
+
+    private void Start()
+    {
+        roomLight = GetComponent<Light2D>();
+        activeGlobalLight = GameObject.Find("Global Light 2D On").GetComponent<Light2D>();
+        disabledGlobalLight = GameObject.Find("Global Light 2D Off").GetComponent<Light2D>();
+        agoraRtcEngine = GameManager.Instance.agoraClientManager.mRtcEngine;
+    }
+
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        if (other.TryGetComponent(out PlayerController player))
+        {
+            if (player.view.IsMine)
+            {
+                player.GetComponent<SpatialAudio>().SetInRoom(true, roomId);
+                ControlRoomLightAsync(true);
+                ControlGlobalLightAsync(false);
+            }
+
+            playersInside.Add(player);
+            PlayersInRooms[player.view.OwnerActorNr] = roomId;
+            PlayersInAnyRoom[player.view.OwnerActorNr] = true;
+            UpdateAudioSettings();
+            UpdateScreenShareVisibility();
+        }
+    }
+    private void OnTriggerExit2D(Collider2D other)
+    {
+        if (other.TryGetComponent(out PlayerController player))
+        {
+            if (player.view.IsMine)
+            {
+                player.GetComponent<SpatialAudio>().SetInRoom(false, 0);
+                ControlGlobalLightAsync(true);
+                ControlRoomLightAsync(false);
+            }
+
+            playersInside.Remove(player);
+            PlayersInRooms.Remove(player.view.OwnerActorNr);
+            PlayersInAnyRoom[player.view.OwnerActorNr] = false;
+            UpdateAudioSettings();
+            UpdateScreenShareVisibility();
+        }
+    }
+
+    private void UpdateScreenShareVisibility()
+    {
+        foreach (PlayerController player in GameManager.Instance.otherPlayers)
+        {
+            if (player.view.Owner.CustomProperties.TryGetValue("isScreenSharing", out object isSharing) && (bool)isSharing)
+            {
+                GameManager.Instance.UpdateScreenShareVisibility(player);
+            }
+        }
+    }
+
+    private void ControlRoomLightAsync(bool active) => roomLight.enabled = active;
+
+    private void ControlGlobalLightAsync(bool active)
+    {
+        activeGlobalLight.enabled = active;
+        disabledGlobalLight.enabled = !active;
+    }
+
+    private void UpdateAudioSettings()
+    {
+        foreach (PlayerController p1 in playersInside)
+        {
+            uint agoraID1 = GetAgoraID(p1);
+
+            foreach (PlayerController p2 in playersInside)
+            {
+                if (p1 != p2)
+                {
+                    uint agoraID2 = GetAgoraID(p2);
+
+                    if (agoraID1 != 0 && agoraID2 != 0)
+                    {
+                        agoraRtcEngine = GameManager.Instance.agoraClientManager.mRtcEngine;
+                        agoraRtcEngine.AdjustUserPlaybackSignalVolume(agoraID1, 100);
+                        agoraRtcEngine.AdjustUserPlaybackSignalVolume(agoraID2, 100);
+                    }
+                }
+            }
+        }
+    }
+
+    private void UpdateScreenShareVisibility(PlayerController player, bool entering)
+    {
+        if (entering)
+        {
+            playersWhoCanSeeScreenShare.Add(player);
+        }
+        else
+        {
+            playersWhoCanSeeScreenShare.Remove(player);
+        }
+
+        // Find any active screen share in this room
+        foreach (PlayerController p in playersInside)
+        {
+            if (p.view.Owner.CustomProperties.TryGetValue("isScreenSharing", out object isSharing) && (bool)isSharing)
+            {
+                OnScreenShareVisibilityChanged?.Invoke((uint)p.view.ViewID, entering);
+            }
+        }
+    }
+    private uint GetAgoraID(PlayerController player)
+    {
+        if (player.view.Owner.CustomProperties.TryGetValue("agoraID", out object agoraIDObj))
+        {
+            return uint.Parse(agoraIDObj.ToString());
+        }
+        return 0;
+    }
+}
+--------------------------------------------------
+File: AvatarSelection.cs
+Contents:
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class AvatarSelection : MonoBehaviour
+{
+    public List<Sprite> Characters;
+
+    [SerializeField] private Button changeAvatarButton;
+    [SerializeField] private Image selectedAvatarImage;
+    [SerializeField] private GameObject avatarSelectionPanel;
+    [SerializeField] private Transform avatarTransform;
+    [SerializeField] private GameObject avatarItem;
+    
+    public int selectedAvatarIndex;
+
+    private void Start()
+    {
+        Characters = new List<Sprite>();
+
+        for (int i = 0; i < CharacterManager.Instance.CharacterSpriteLibraries.Count; i++)
+        {
+            Characters.Add(CharacterManager.Instance.CharacterSpriteLibraries[i].GetSprite("Idle", "front"));
+        }
+
+        changeAvatarButton.onClick.RemoveAllListeners();
+        changeAvatarButton.onClick.AddListener(OpenAvatarSelection);
+
+        GameObject tempAvatarObject;
+
+        for (int i = 0; i < Characters.Count; i++)
+        {
+            int i1 = i;
+            tempAvatarObject = Instantiate(avatarItem, avatarTransform);
+            tempAvatarObject.GetComponent<Image>().sprite = Characters[i];
+            tempAvatarObject.GetComponent<Button>().onClick.AddListener(() => OnSelectAvatar(i1));
+        }
+
+        OnSelectAvatar(PlayerDataManager.PlayerAvatar == -1 ? Random.Range(0, Characters.Count) : PlayerDataManager.PlayerAvatar);
+    }
+
+    private void OpenAvatarSelection()
+    {
+        avatarSelectionPanel.SetActive(true);
+    }
+
+    private void OnSelectAvatar(int index)
+    {
+        selectedAvatarIndex = index;
+
+        selectedAvatarImage.sprite = Characters[selectedAvatarIndex];
+
+        avatarSelectionPanel.SetActive(false);
+    }
+}
+
+--------------------------------------------------
+File: CharacterManager.cs
+Contents:
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+using UnityEngine.U2D.Animation;
+
+public class CharacterManager : MonoBehaviour
+{
+    public static CharacterManager Instance;
+
+    public List<SpriteLibraryAsset> CharacterSpriteLibraries;
+
+    private void Awake()
+    {
+        if(Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+
+        LoadCharacterAnimations();
+    }
+
+    public void LoadCharacterAnimations()
+    {
+        CharacterSpriteLibraries = Resources.LoadAll<SpriteLibraryAsset>("SpriteLibrary").ToList();
+    }
+}
+
+--------------------------------------------------
+File: CameraController.cs
+Contents:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class CameraController : MonoBehaviour
+{
+    public GameObject player;
+    public float minX, maxX, minY, maxY; // Define map boundaries
+    public float zoomMultiplier = 4f;
+    private float minZoom = 2f;
+    private float maxZoom = 20f;
+    private float zoom;
+    private float velocity = 0f;
+    private Vector3 cameraVelocity = Vector3.zero;
+    private float smoothTime = 0.5f;
+    private Camera cam;
+    float camHeight, camWidth;
+    float horizontalOffset = -1f;
+    private bool disableZoom = false;
+
+    void Start()
+    {
+        cam = Camera.main; // Ensure this script is attached to the main camera
+        zoom = cam.orthographicSize;
+    }
+
+    void Update()
+    {
+        if (disableZoom) return;
+
+        // Zoom control
+        float scroll = Input.GetAxis("Mouse ScrollWheel");
+
+        // Check if the camera is at the upper and lower boundary
+        if (cam.transform.position.y >= maxY - camHeight && cam.transform.position.y <= minY + camHeight)
+        {
+            // Disable zooming out when at the upper boundary
+            if (scroll < 0)
+            {
+                scroll = 0;
+            }
+        }
+
+        zoom -= scroll * zoomMultiplier;
+        zoom = Mathf.Clamp(zoom, minZoom, maxZoom);
+        cam.orthographicSize = Mathf.SmoothDamp(cam.orthographicSize, zoom, ref velocity, smoothTime);
+
+        // Ensure player is assigned and camera is available
+        if (player == null || cam == null)
+            return;
+
+        // Adjust vertical boundaries based on zoom
+        camHeight = cam.orthographicSize;
+        camWidth = cam.orthographicSize * cam.aspect;
+        float minYWithOffset = minY + camHeight;
+        float maxYWithOffset = maxY - camHeight;
+
+        // Calculate the target Y position for the camera
+        float targetY = Mathf.Clamp(player.transform.position.y, minYWithOffset, maxYWithOffset);
+
+        // Calculate the camera's Y position based on the player's position and boundaries
+        float cameraY = targetY;
+
+        // Check if the camera needs to stop at the lower boundary
+        if (targetY <= minYWithOffset)
+        {
+            cameraY = minYWithOffset;
+        }
+
+        // Check if the camera needs to stop at the upper boundary
+        if (targetY >= maxYWithOffset)
+        {
+            cameraY = maxYWithOffset;
+        }
+
+        // Adjust horizontal boundaries based on zoom
+        float minXWithOffset = minX + camWidth;
+        float maxXWithOffset = maxX - camWidth;
+
+        // Calculate the target X position for the camera
+        float targetX = Mathf.Clamp(player.transform.position.x, minXWithOffset, maxXWithOffset);
+
+        // Calculate the camera's X position based on the player's position and boundaries
+        float cameraX = targetX;
+
+        // Check if the camera needs to stop at the left boundary
+        if (targetX <= minXWithOffset)
+        {
+            cameraX = minXWithOffset;
+        }
+
+        // Check if the camera needs to stop at the right boundary
+        if (targetX >= maxXWithOffset)
+        {
+            cameraX = maxXWithOffset;
+        }
+
+        // If both horizontal boundaries are hit, center the camera horizontally
+        if (cameraX <= minXWithOffset && cameraX >= maxXWithOffset)
+        {
+            cameraX = ((minX + maxX) / 2) + horizontalOffset;
+        }
+
+        // Smoothly move the camera to the target position
+        Vector3 targetPosition = new Vector3(cameraX, cameraY, transform.position.z);
+        transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref cameraVelocity,  smoothTime);
+    }
+
+    private void OnEnable()
+    {
+        EmojiChatButtonController.OnEmojiWindowStateChanged += OnEmojiWindowStateChanged;
+    }
+
+    private void OnDisable()
+    {
+        EmojiChatButtonController.OnEmojiWindowStateChanged -= OnEmojiWindowStateChanged;
+    }
+
+
+    private void OnEmojiWindowStateChanged(bool isOpen)
+    {
+        disableZoom = isOpen;
+    }
+}
+
+--------------------------------------------------
+File: Zoom.cs
+Contents:
+using UnityEngine;
+
+public class Zoom : MonoBehaviour
+{
+	private float zoom;
+	private float zoomMultiplier = 4f;
+	private float minZoom = 2f;
+	private float maxZoom = 5.2f;
+	private float velocity = 0f;
+	private float smoothTime = 0.25f;
+
+	[SerializeField] private Camera cam;
+
+	private void Start()
+	{
+		zoom = cam.orthographicSize;
+	}
+
+	private void Update()
+	{
+		float scroll = Input.GetAxis("Mouse ScrollWheel");
+		zoom -= scroll * zoomMultiplier;
+		zoom = Mathf.Clamp(zoom, minZoom, maxZoom);
+		cam.orthographicSize = Mathf.SmoothDamp(cam.orthographicSize, zoom, ref velocity, smoothTime);
+	}
+}
+--------------------------------------------------
+File: TMPWebGLInputFieldExtension.cs
+Contents:
+using UnityEngine;
+using UnityEngine.EventSystems;
+using TMPro;
+using System.Runtime.InteropServices;
+using System.Collections;
+
+public class TMPWebGLInputFieldExtension : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    private TMP_InputField inputField;
+    private bool isMessageField = false;
+
+    [DllImport("__Internal")]
+    private static extern void ShowContextMenu(string gameObjectName, float x, float y, bool isMessageField);
+
+    [DllImport("__Internal")]
+    private static extern void CopyToClipboard(string text);
+
+    [DllImport("__Internal")]
+    private static extern void RequestPasteFromClipboard(string gameObjectName);
+
+    [DllImport("__Internal")]
+    private static extern void DisableDefaultCopyPaste();
+
+    [DllImport("__Internal")]
+    private static extern void SetInputFieldHoverState(string gameObjectName, bool isHovering);
+
+    private void Awake()
+    {
+        inputField = GetComponent<TMP_InputField>();
+        if (inputField == null)
+        {
+            Debug.LogError("TMPWebGLInputFieldExtension requires a TMP_InputField component on the same GameObject.");
+            return;
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        gameObject.AddComponent<RightClickHandler>().OnRightClick += ShowCustomContextMenu;
+        DisableDefaultCopyPaste();
+#endif
+    }
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (!inputField.readOnly)
+        {
+            SetInputFieldHoverState(gameObject.name, true);
+        }
+#endif
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        SetInputFieldHoverState(gameObject.name, false);
+#endif
+    }
+
+    public void SetAsMessageField()
+    {
+        isMessageField = true;
+    }
+
+    private void ShowCustomContextMenu(Vector2 position)
+    {
+        ShowContextMenu(gameObject.name, position.x, position.y, isMessageField);
+    }
+
+    public void CopySelectedText()
+    {
+        if (inputField.selectionStringAnchorPosition != inputField.selectionStringFocusPosition)
+        {
+            int startIndex = Mathf.Min(inputField.selectionStringAnchorPosition, inputField.selectionStringFocusPosition);
+            int endIndex = Mathf.Max(inputField.selectionStringAnchorPosition, inputField.selectionStringFocusPosition);
+            string selectedText = inputField.text.Substring(startIndex, endIndex - startIndex);
+            CopyToClipboard(selectedText);
+        }
+    }
+
+    public void RequestPaste()
+    {
+        RequestPasteFromClipboard(gameObject.name);
+    }
+
+    public void PasteText(string clipboardText)
+    {
+        if (string.IsNullOrEmpty(clipboardText) || isMessageField) return;
+
+        clipboardText = clipboardText.Replace("\n", "").Replace("\r", "");
+
+        int caretPosition = inputField.caretPosition;
+        string currentText = inputField.text;
+        string newText = currentText.Insert(caretPosition, clipboardText);
+        inputField.text = newText;
+        StartCoroutine(SetCaretPosition(caretPosition + clipboardText.Length));
+        inputField.ForceLabelUpdate();
+    }
+
+    private IEnumerator SetCaretPosition(int caretIndex)
+    {
+        int width = inputField.caretWidth;
+        inputField.caretWidth = 0;
+        yield return new WaitForEndOfFrame();
+        inputField.caretWidth = width;
+        inputField.caretPosition = caretIndex;
+    }
+}
+
+public class RightClickHandler : MonoBehaviour
+{
+    public event System.Action<Vector2> OnRightClick;
+    private TMP_InputField inputField;
+
+    private void Awake()
+    {
+        inputField = GetComponent<TMP_InputField>();
+    }
+
+    private void Update()
+    {
+        if (Input.GetMouseButtonDown(1)) // Right mouse button
+        {
+            Vector2 mousePosition = Input.mousePosition;
+            if (IsMouseOverInputField(mousePosition))
+            {
+                OnRightClick?.Invoke(mousePosition);
+            }
+        }
+    }
+
+    private bool IsMouseOverInputField(Vector2 mousePosition)
+    {
+        RectTransform rectTransform = inputField.GetComponent<RectTransform>();
+        Vector2 localMousePosition = rectTransform.InverseTransformPoint(mousePosition);
+        return rectTransform.rect.Contains(localMousePosition);
+    }
+}
+--------------------------------------------------
+File: CreateAndJoin.cs
+Contents:
+using UnityEngine;
+using Photon.Pun;
+using TMPro;
+using Photon.Realtime;
+using ExitGames.Client.Photon;
+
+public class CreateAndJoin : MonoBehaviourPunCallbacks
+{
+    public TMP_InputField playerNameInput;
+    public TMP_InputField joinRoomInput;
+
+    public GameObject LoadingPanel;
+    public TextMeshProUGUI loadingStatusText;
+
+    public AvatarSelection avatarSelection;
+
+    public int maxPlayers = 10;
+
+    private RoomOptions roomOptions;
+    private Hashtable playerProperties;
+
+    void Awake()
+    {
+        if (!PhotonNetwork.IsConnected)
+        {
+            PhotonNetwork.ConnectUsingSettings();
+        }
+
+        LoadingPanel.SetActive(true);
+
+        playerNameInput.text = string.IsNullOrEmpty(PlayerDataManager.PlayerName) ? $"Guest{Random.Range(1000, 9999)}" : PlayerDataManager.PlayerName;
+        joinRoomInput.text = string.IsNullOrEmpty(PlayerDataManager.PlayerRoomName) ? "testRoom" : PlayerDataManager.PlayerRoomName;
+
+        roomOptions = new RoomOptions { MaxPlayers = maxPlayers };
+        playerProperties = new Hashtable();
+    }
+
+    private void Update()
+    {
+        loadingStatusText.text = "Loading: " + PhotonNetwork.NetworkingClient.State;
+    }
+
+    public override void OnConnectedToMaster()
+    {
+        Debug.Log("Connected to master server.");
+        PhotonNetwork.JoinLobby();
+    }
+
+    public override void OnJoinedLobby()
+    {
+        base.OnJoinedLobby();
+        LoadingPanel.SetActive(false);
+    }
+
+    public void OnJoinButton()
+    {
+        if (!PhotonNetwork.IsConnected)
+        {
+            Debug.LogError("Not connected to the master server.");
+            return;
+        }
+
+        PlayerDataManager.PlayerName = playerNameInput.text;
+        PlayerDataManager.PlayerRoomName = joinRoomInput.text;
+        PlayerDataManager.PlayerAvatar = avatarSelection.selectedAvatarIndex;
+
+        PhotonNetwork.LocalPlayer.NickName = playerNameInput.text;
+        playerProperties.Add("avatar", avatarSelection.selectedAvatarIndex);
+        PhotonNetwork.LocalPlayer.SetCustomProperties(playerProperties);
+
+        LoadingPanel.SetActive(true);
+
+        PhotonNetwork.JoinOrCreateRoom(joinRoomInput.text, roomOptions, default);
+    }
+
+    public override void OnJoinedRoom()
+    {
+        PhotonNetwork.LoadLevel("GameScene");
+    }
+
+    public override void OnJoinRoomFailed(short returnCode, string message)
+    {
+        base.OnJoinRoomFailed(returnCode, message);
+        Debug.LogError("Join room failed: " + returnCode + " :: " + message);
+        LoadingPanel.SetActive(false);
+    }
+}
+--------------------------------------------------
+File: EmojiButtonController.cs
+Contents:
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using System.Collections;
+using System.Collections.Generic;
+using Photon.Pun;
+using Photon.Realtime;
+
+public class EmojiButtonController : MonoBehaviourPunCallbacks
+{
+    public RectTransform mainButton;
+    public RectTransform emojiPanel;
+    public RectTransform[] emojiButtons;
+
+    [System.Serializable]
+    public class EmojiAnimation
+    {
+        public string emojiName;
+        public Animator animator;
+    }
+
+    public EmojiAnimation[] emojiAnimations;
+
+    [SerializeField] private GameObject speechBubblePrefab;
+    [SerializeField] private float emojiDisplayDuration = 3f;
+    [SerializeField] private Vector3 speechBubbleOffset = new Vector3(0, 1, 0);
+
+    private bool isExpanded = false;
+    private float expandedWidth;
+
+    [SerializeField] private float animationDuration = 0.3f;
+    [SerializeField] private float emojiSpacing = 10f;
+
+    private Dictionary<int, GameObject> activeSpeechBubbles = new Dictionary<int, GameObject>();
+    private PhotonView photonView;
+
+    void Start()
+    {
+        photonView = GetComponent<PhotonView>();
+        expandedWidth = emojiPanel.rect.width;
+        emojiPanel.sizeDelta = new Vector2(0, emojiPanel.sizeDelta.y);
+        emojiPanel.gameObject.SetActive(false);
+        SetEmojisAlpha(0);
+        mainButton.GetComponent<Button>().onClick.AddListener(ToggleEmojiPanel);
+
+        SetupEmojiButtons();
+    }
+
+    void SetupEmojiButtons()
+    {
+        for (int i = 0; i < emojiButtons.Length; i++)
+        {
+            int index = i;
+            EventTrigger trigger = emojiButtons[i].gameObject.AddComponent<EventTrigger>();
+
+            EventTrigger.Entry enterEntry = new EventTrigger.Entry();
+            enterEntry.eventID = EventTriggerType.PointerEnter;
+            enterEntry.callback.AddListener((data) => { OnEmojiHoverEnter(index); });
+            trigger.triggers.Add(enterEntry);
+
+            EventTrigger.Entry exitEntry = new EventTrigger.Entry();
+            exitEntry.eventID = EventTriggerType.PointerExit;
+            exitEntry.callback.AddListener((data) => { OnEmojiHoverExit(index); });
+            trigger.triggers.Add(exitEntry);
+
+            EventTrigger.Entry clickEntry = new EventTrigger.Entry();
+            clickEntry.eventID = EventTriggerType.PointerClick;
+            clickEntry.callback.AddListener((data) => { OnEmojiClick(index); });
+            trigger.triggers.Add(clickEntry);
+        }
+    }
+
+    void OnEmojiHoverEnter(int index)
+    {
+        if (isExpanded && index < emojiAnimations.Length && emojiAnimations[index].animator != null)
+        {
+            emojiAnimations[index].animator.SetBool("IsHovering", true);
+        }
+    }
+
+    void OnEmojiHoverExit(int index)
+    {
+        if (isExpanded && index < emojiAnimations.Length && emojiAnimations[index].animator != null)
+        {
+            emojiAnimations[index].animator.SetBool("IsHovering", false);
+        }
+    }
+
+    void OnEmojiClick(int index)
+    {
+        if (isExpanded && index < emojiAnimations.Length)
+        {
+            photonView.RPC("DisplayEmojiRPC", RpcTarget.All, index, PhotonNetwork.LocalPlayer.ActorNumber);
+            //ToggleEmojiPanel(); // Close the panel after selecting an emoji
+        }
+    }
+
+    [PunRPC]
+    void DisplayEmojiRPC(int emojiIndex, int actorNumber)
+    {
+        Debug.Log($"DisplayEmojiRPC called. Emoji: {emojiIndex}, Actor: {actorNumber}");
+
+        Player player = PhotonNetwork.CurrentRoom.GetPlayer(actorNumber);
+        if (player == null)
+        {
+            Debug.LogError($"Player with ActorNumber {actorNumber} not found in the room.");
+            return;
+        }
+
+        if (!player.CustomProperties.TryGetValue("Name", out object nameObj) || !(nameObj is string playerName))
+        {
+            Debug.LogError($"Custom property 'Name' not found or invalid for player {actorNumber}.");
+            return;
+        }
+
+        GameObject playerObject = GameObject.Find(playerName);
+        if (playerObject == null)
+        {
+            Debug.LogError($"Player object with name '{playerName}' not found in the scene.");
+            return;
+        }
+
+        Canvas playerCanvas = playerObject.GetComponentInChildren<Canvas>();
+        if (playerCanvas == null)
+        {
+            Debug.LogError($"Canvas component not found on player '{playerName}' or its children.");
+            return;
+        }
+
+        StartCoroutine(DisplayEmojiCoroutine(playerCanvas, emojiIndex, actorNumber));
+    }
+
+    IEnumerator DisplayEmojiCoroutine(Canvas playerCanvas, int emojiIndex, int actorNumber)
+    {
+        // Remove any existing speech bubble for this player
+        if (activeSpeechBubbles.TryGetValue(actorNumber, out GameObject existingBubble))
+        {
+            Destroy(existingBubble);
+            activeSpeechBubbles.Remove(actorNumber);
+        }
+
+        GameObject speechBubble = Instantiate(speechBubblePrefab, playerCanvas.transform);
+        activeSpeechBubbles[actorNumber] = speechBubble;
+
+        speechBubble.transform.localPosition = speechBubbleOffset;
+
+        Animator emojiAnimator = speechBubble.GetComponentInChildren<Animator>();
+        if (emojiAnimator != null)
+        {
+            emojiAnimator.runtimeAnimatorController = emojiAnimations[emojiIndex].animator.runtimeAnimatorController;
+            emojiAnimator.SetBool("IsHovering", true); // Start the animation
+        }
+        else
+        {
+            Debug.LogError("Emoji Animator not found in speech bubble!");
+        }
+
+        yield return new WaitForSeconds(emojiDisplayDuration);
+
+        Destroy(speechBubble);
+        activeSpeechBubbles.Remove(actorNumber);
+    }
+
+    void Update()
+    {
+        UpdateSpeechBubblePositions();
+    }
+
+    void UpdateSpeechBubblePositions()
+    {
+        foreach (var kvp in activeSpeechBubbles)
+        {
+            int actorNumber = kvp.Key;
+            GameObject speechBubble = kvp.Value;
+
+            Player player = PhotonNetwork.CurrentRoom.GetPlayer(actorNumber);
+            if (player == null || !player.CustomProperties.TryGetValue("Name", out object nameObj) || !(nameObj is string playerName))
+            {
+                continue;
+            }
+
+            GameObject playerObject = GameObject.Find(playerName);
+            if (playerObject != null && speechBubble != null)
+            {
+                Vector3 worldPosition = playerObject.transform.position + speechBubbleOffset;
+                speechBubble.transform.position = worldPosition;
+            }
+        }
+    }
+
+    void ToggleEmojiPanel()
+    {
+        isExpanded = !isExpanded;
+        emojiPanel.gameObject.SetActive(true);
+        StartCoroutine(AnimateEmojiPanel());
+    }
+
+    IEnumerator AnimateEmojiPanel()
+    {
+        float startWidth = isExpanded ? 0 : expandedWidth;
+        float endWidth = isExpanded ? expandedWidth : 0;
+        float elapsedTime = 0;
+
+        while (elapsedTime < animationDuration)
+        {
+            elapsedTime += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsedTime / animationDuration);
+            t = t * t * (3f - 2f * t); // Smoothstep easing
+
+            float currentWidth = Mathf.Lerp(startWidth, endWidth, t);
+            emojiPanel.sizeDelta = new Vector2(currentWidth, emojiPanel.sizeDelta.y);
+
+            UpdateEmojisVisibility(currentWidth);
+            yield return null;
+        }
+
+        emojiPanel.sizeDelta = new Vector2(endWidth, emojiPanel.sizeDelta.y);
+
+        if (!isExpanded)
+        {
+            emojiPanel.gameObject.SetActive(false);
+            SetEmojisAlpha(0);
+            ResetAllAnimators();
+        }
+        else
+        {
+            SetEmojisAlpha(1);
+        }
+    }
+
+    void UpdateEmojisVisibility(float currentWidth)
+    {
+        for (int i = 0; i < emojiButtons.Length; i++)
+        {
+            float emojiPosition = i * (emojiButtons[i].rect.width + emojiSpacing);
+            float alpha = Mathf.Clamp01((currentWidth - emojiPosition) / emojiButtons[i].rect.width);
+            SetEmojiAlpha(emojiButtons[i], alpha);
+        }
+    }
+
+    void SetEmojisAlpha(float alpha)
+    {
+        foreach (var emojiButton in emojiButtons)
+        {
+            SetEmojiAlpha(emojiButton, alpha);
+        }
+    }
+
+    void SetEmojiAlpha(RectTransform emojiButton, float alpha)
+    {
+        Image image = emojiButton.GetComponent<Image>();
+        if (image != null)
+        {
+            Color color = image.color;
+            color.a = alpha;
+            image.color = color;
+        }
+    }
+
+    void ResetAllAnimators()
+    {
+        foreach (var emojiAnim in emojiAnimations)
+        {
+            if (emojiAnim.animator != null)
+            {
+                emojiAnim.animator.SetBool("IsHovering", false);
+            }
+        }
+    }
+}
+--------------------------------------------------
+File: GameChatManager.cs
+Contents:
+using UnityEngine;
+using Photon.Pun;
+using TMPro;
+using System;
+using System.Text.RegularExpressions;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+using System.Collections;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Collections.Generic;
+
+public class GameChatManager : MonoBehaviourPunCallbacks
+{
+    public static GameChatManager SP;
+    public PhotonView view;
+    public TMP_InputField chatMessagePrefab;
+    public RectTransform chatMessagesContent;
+    public TMP_InputField chatInputField;
+    public TMP_InputField searchInputField;
+    public ScrollRect scrollRect;
+    public TMP_Text time;
+
+    private bool isOverLink = false;
+    private Coroutine cursorCheckCoroutine;
+
+    private readonly Regex urlRegex = new Regex(@"(http|https):\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&amp;:/~\+#]*[\w\-\@?^=%&amp;/~\+#])?", RegexOptions.Compiled);
+
+    private Dictionary<string, string> linkDictionary = new Dictionary<string, string>();
+
+    [DllImport("__Internal")]
+    private static extern void SetLinkHoverState(string gameObjectName, bool isHovering);
+
+    private void Awake()
+    {
+        SP = this;
+        chatInputField.onValueChanged.AddListener(OnInputValueChanged);
+    }
+
+    private void OnDestroy()
+    {
+        chatInputField.onValueChanged.RemoveListener(OnInputValueChanged);
+    }
+
+    public void Select(string text)
+    {
+        chatInputField.placeholder.gameObject.SetActive(false);
+
+        Debug.Log("Input field selected");
+    }
+
+    public void Deselect(string text)
+    {
+        Debug.Log("Input field deselected");
+
+        chatInputField.placeholder.gameObject.SetActive(true);
+    }
+
+    private void OnInputValueChanged(string text)
+    {
+        if (text.Contains("\n"))
+        {
+            string trimmedText = text.Trim();
+            if (!string.IsNullOrWhiteSpace(trimmedText))
+            {
+                SendChat(trimmedText);
+                chatInputField.text = "";
+            }
+            else
+            {
+                chatInputField.text = "";
+            }
+
+            EventSystem.current.SetSelectedGameObject(null);
+            EventSystem.current.SetSelectedGameObject(chatInputField.gameObject);
+        }
+    }
+
+    private void DeselectInputField()
+    {
+        chatInputField.DeactivateInputField();
+        EventSystem.current.SetSelectedGameObject(null);
+
+        // Force the input field to lose focus
+        if (EventSystem.current.currentSelectedGameObject == chatInputField.gameObject)
+        {
+            EventSystem.current.SetSelectedGameObject(null);
+        }
+    }
+
+    void SendChat(string text)
+    {
+        view.RPC(nameof(SendChatMessage), RpcTarget.All, text);
+    }
+
+    [PunRPC]
+    void SendChatMessage(string text, PhotonMessageInfo info)
+    {
+        GameObject messageObj = Instantiate(chatMessagePrefab.gameObject, chatMessagesContent);
+        messageObj.name = "ChatMessage_" + System.Guid.NewGuid().ToString();
+        TMP_InputField messageInputField = messageObj.GetComponent<TMP_InputField>();
+        TextMeshProUGUI timeText = messageObj.GetComponentsInChildren<TextMeshProUGUI>()
+            .FirstOrDefault(t => t.name == "Time");
+
+        if (messageInputField == null || timeText == null)
+        {
+            Debug.LogError("Message prefab is not set up correctly. Ensure it has TMP_InputField and TextMeshProUGUI components for message and time.");
+            return;
+        }
+
+        string timestamp = DateTime.Now.ToString("HH:mm");
+        linkDictionary.Clear(); // Clear previous links
+        int linkCount = 0;
+        string formattedText = urlRegex.Replace(text, match =>
+        {
+            linkCount++;
+            string linkId = $"link_{linkCount}";
+            linkDictionary[linkId] = match.Value;
+            return $"<link=\"{linkId}\"><color=#00FFFF><u>{match.Value}</u></color></link>";
+        });
+
+        messageInputField.text = $"<b>{info.Sender.NickName}</b>\n{formattedText}";
+        timeText.text = timestamp;
+
+        messageInputField.readOnly = true;
+
+        messageObj.SetActive(true);
+
+        TMPWebGLInputFieldExtension extension = messageObj.AddComponent<TMPWebGLInputFieldExtension>();
+        extension.SetAsMessageField();
+
+        EventTrigger eventTrigger = messageObj.AddComponent<EventTrigger>();
+
+        EventTrigger.Entry clickEntry = new EventTrigger.Entry();
+        clickEntry.eventID = EventTriggerType.PointerClick;
+        clickEntry.callback.AddListener((eventData) => { OnLinkClicked((PointerEventData)eventData, messageInputField.textComponent); });
+        eventTrigger.triggers.Add(clickEntry);
+
+        EventTrigger.Entry enterEntry = new EventTrigger.Entry();
+        enterEntry.eventID = EventTriggerType.PointerEnter;
+        enterEntry.callback.AddListener((eventData) => { StartCursorCheck(messageInputField.textComponent); });
+        eventTrigger.triggers.Add(enterEntry);
+
+        EventTrigger.Entry exitEntry = new EventTrigger.Entry();
+        exitEntry.eventID = EventTriggerType.PointerExit;
+        exitEntry.callback.AddListener((eventData) =>
+        {
+            if (cursorCheckCoroutine != null)
+            {
+                StopCoroutine(cursorCheckCoroutine);
+                cursorCheckCoroutine = null;
+            }
+            UpdateCursor(messageInputField.textComponent);
+        });
+        eventTrigger.triggers.Add(exitEntry);
+
+        messageObj.transform.SetAsFirstSibling();
+
+        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(chatMessagesContent);
+        scrollRect.verticalNormalizedPosition = 0f;
+
+        Debug.Log($"Message sent: {text}, Time: {timestamp}");
+    }
+
+    private void OnMessageClicked(PointerEventData eventData, TMP_Text textComponent)
+    {
+        Vector3 mousePosition = eventData.position;
+        int linkIndex = TMP_TextUtilities.FindIntersectingWord(textComponent, mousePosition, Camera.main);
+
+        if (linkIndex != -1)
+        {
+            TMP_WordInfo wordInfo = textComponent.textInfo.wordInfo[linkIndex];
+            string word = textComponent.text.Substring(wordInfo.firstCharacterIndex, wordInfo.characterCount);
+
+            if (urlRegex.IsMatch(word))
+            {
+                string decodedUrl = System.Web.HttpUtility.HtmlDecode(word);
+                Application.OpenURL(decodedUrl);
+            }
+        }
+    }
+
+    private void UpdateCursor(TMP_Text textComponent)
+    {
+        Vector2 mousePosition = Input.mousePosition;
+        int linkIndex = TMP_TextUtilities.FindIntersectingLink(textComponent, mousePosition, null);
+        SetLinkHoverState(gameObject.name, linkIndex != -1);
+    }
+
+    private void StartCursorCheck(TMP_Text textComponent)
+    {
+        if (cursorCheckCoroutine != null)
+        {
+            StopCoroutine(cursorCheckCoroutine);
+        }
+        cursorCheckCoroutine = StartCoroutine(CheckCursorOverLink(textComponent));
+    }
+
+    private IEnumerator CheckCursorOverLink(TMP_Text textComponent)
+    {
+        while (true)
+        {
+            UpdateCursor(textComponent);
+            yield return null;
+        }
+    }
+
+    private string FormatMessageWithClickableLinks(string message)
+    {
+        int linkCount = 0;
+        return urlRegex.Replace(message, match =>
+        {
+            string escapedUrl = System.Web.HttpUtility.HtmlEncode(match.Value);
+            linkCount++;
+            return $"<link=\"link_{linkCount}\"><color=#00FFFF><u>{escapedUrl}</u></color></link>";
+        });
+    }
+
+    private void OnLinkClicked(PointerEventData eventData, TMP_Text textComponent)
+    {
+        if (eventData.button == PointerEventData.InputButton.Left)
+        {
+            int linkIndex = TMP_TextUtilities.FindIntersectingLink(textComponent, eventData.position, null);
+            if (linkIndex != -1)
+            {
+                TMP_LinkInfo linkInfo = textComponent.textInfo.linkInfo[linkIndex];
+                string linkId = linkInfo.GetLinkID();
+                if (linkDictionary.TryGetValue(linkId, out string url))
+                {
+                    Application.OpenURL(url);
+                }
+            }
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (cursorCheckCoroutine != null)
+        {
+            StopCoroutine(cursorCheckCoroutine);
+            cursorCheckCoroutine = null;
+        }
+        SetLinkHoverState(gameObject.name, false);
+    }
+}
+
+--------------------------------------------------
+File: GameManager.cs
+Contents:
+using System.Collections;
+using UnityEngine;
+using Photon.Pun;
+using UnityEngine.SceneManagement;
+using Photon.Realtime;
+using System.Collections.Generic;
+using agora_gaming_rtc;
+using TMPro;
+
+public class GameManager : MonoBehaviourPunCallbacks
+{
+    public static GameManager Instance;
+
+    public float minX, maxX;
+    public float minY, maxY;
+    public string playerPrefabName = "Player";
+
+    public AgoraClientManager agoraClientManager;
+
+    public TextMeshProUGUI roomNameText, totalPlayersText;
+
+    public CameraController cameraController;
+    public GameObject interactionMessage;
+    public TextMeshProUGUI interactionMessageText;
+    
+    public GameObject screenShareObject;
+    public VideoSurface screenShareSurface;
+    public TextMeshProUGUI screenSharePlayerNameText;
+
+    public PlayerController myPlayer;
+    public List<PlayerController> otherPlayers;
+
+    private Vector2 RandomStartPosition => new Vector2(Random.Range(minX, maxX), Random.Range(minY, maxY));
+
+    private void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+
+    private void Start()
+    {
+        if (PhotonNetwork.InRoom)
+        {
+            StartGame();
+        }
+        SpatialRoom.OnScreenShareVisibilityChanged += HandleScreenShareVisibility;
+    }
+
+    private void OnDestroy()
+    {
+        SpatialRoom.OnScreenShareVisibilityChanged -= HandleScreenShareVisibility;
+    }
+
+    private void HandleScreenShareVisibility(uint playerViewId, bool isVisible)
+    {
+        if (myPlayer.view.ViewID == playerViewId)
+        {
+            return; // Screen sharer always sees their own screen share
+        }
+
+        screenShareObject.SetActive(isVisible);
+        if (isVisible)
+        {
+            screenShareSurface.SetForUser(playerViewId);
+            screenShareSurface.SetEnable(true);
+
+            PlayerController sharingPlayer = GetPlayerByViewId(playerViewId);
+            if (sharingPlayer != null)
+            {
+                screenSharePlayerNameText.text = $"{sharingPlayer.view.Owner.NickName} is screen sharing.";
+            }
+        }
+    }
+
+    private bool IsInSameRoom(PlayerController otherPlayer)
+    {
+        return SpatialRoom.PlayersInRooms.TryGetValue(myPlayer.view.Owner.ActorNumber, out int myRoomId) &&
+               SpatialRoom.PlayersInRooms.TryGetValue(otherPlayer.view.Owner.ActorNumber, out int otherRoomId) &&
+               myRoomId == otherRoomId;
+    }
+
+    private PlayerController GetPlayerByViewId(uint viewId)
+    {
+        if (myPlayer.view.ViewID == viewId) return myPlayer;
+        return otherPlayers.Find(p => p.view.ViewID == viewId);
+    }
+
+    public void JoinAgoraChannel()
+    {
+        agoraClientManager.JoinChannel();
+    }
+
+    public override void OnJoinedRoom()
+    {
+        Debug.Log("Joined a room.");
+        StartGame();
+    }
+
+    public override void OnLeftRoom()
+    {
+        StartCoroutine(LoadSceneAfterLeftRoom());
+    }
+
+    public override void OnPlayerEnteredRoom(Player newPlayer)
+    {
+        base.OnPlayerEnteredRoom(newPlayer);
+        UpdateTotalPlayers();
+    }
+
+    public override void OnPlayerLeftRoom(Player otherPlayer)
+    {
+        base.OnPlayerLeftRoom(otherPlayer);
+        UpdateTotalPlayers();
+    }
+
+    private IEnumerator LoadSceneAfterLeftRoom()
+    {
+        while (PhotonNetwork.InRoom || !PhotonNetwork.IsConnected)
+        {
+            yield return null;
+        }
+
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    private void StartGame()
+    {
+        Camera.main.farClipPlane = 1000;
+        Vector2 spawnPoint = RandomStartPosition;
+        int maxTries = 99;
+        int currentTry = 0;
+
+        while (currentTry < maxTries)
+        {
+            List<RaycastHit2D> hits = new List<RaycastHit2D>();
+            ContactFilter2D contactFilter2D = new ContactFilter2D();
+            contactFilter2D.useTriggers = false;
+            int hitsCount = Physics2D.CircleCast(spawnPoint, 0.2f, Vector2.zero, contactFilter2D, hits);
+            if (hitsCount == 0)
+            {
+                break;
+            }
+            spawnPoint = new Vector2(Random.Range(minX, maxX), Random.Range(minY, maxY)); // Modify this to add some variation to the spawn point.
+            currentTry++;
+            Debug.Log("Bebra");
+        }
+
+        if (currentTry < maxTries)
+        {
+            GameObject go = PhotonNetwork.Instantiate(playerPrefabName, spawnPoint, Quaternion.identity);
+            myPlayer = go.GetComponent<PlayerController>();
+            cameraController.player = go;
+        }
+        else
+        {
+            Debug.LogError("Failed to find a valid spawn point after " + maxTries + " tries.");
+        }
+
+        roomNameText.text = PhotonNetwork.CurrentRoom.Name;
+        UpdateTotalPlayers();
+    }
+
+
+    public void LeaveRoom()
+    {
+        SceneManager.LoadScene("Lobby");
+        PhotonNetwork.LeaveRoom();
+    }
+
+    public void UpdateTotalPlayers()
+    {
+        totalPlayersText.text = $"{PhotonNetwork.CurrentRoom.PlayerCount}";
+    }
+
+    public void SetScreenShareObjectState(uint uid, string name, bool enable)
+    {
+        PlayerController sharingPlayer = GetPlayerByViewId(uid);
+        if (sharingPlayer == null) return;
+
+        if (myPlayer.view.ViewID == uid)
+        {
+            // Screen sharer always sees their own screen share
+            screenShareObject.SetActive(enable);
+            screenShareSurface.SetForUser(0);
+            screenShareSurface.SetEnable(enable);
+            screenSharePlayerNameText.text = $"{name} is screen sharing.";
+            return;
+        }
+
+        bool shouldShowScreenShare = ShouldShowScreenShare(sharingPlayer);
+        screenShareObject.SetActive(enable && shouldShowScreenShare);
+        if (enable && shouldShowScreenShare)
+        {
+            screenShareSurface.SetForUser(uid);
+            screenShareSurface.SetEnable(true);
+            screenSharePlayerNameText.text = $"{name} is screen sharing.";
+        }
+    }
+
+    public void UpdateScreenShareVisibility(PlayerController sharingPlayer)
+    {
+        if (sharingPlayer.view.Owner.CustomProperties.TryGetValue("isScreenSharing", out object isSharing) && (bool)isSharing)
+        {
+            SetScreenShareObjectState(
+                (uint)sharingPlayer.view.ViewID,
+                sharingPlayer.view.Owner.NickName,
+                true
+            );
+        }
+    }
+
+    private bool ShouldShowScreenShare(PlayerController sharingPlayer)
+    {
+        bool viewerInRoom = SpatialRoom.PlayersInAnyRoom.TryGetValue(myPlayer.view.Owner.ActorNumber, out bool isViewerInRoom) && isViewerInRoom;
+        bool sharerInRoom = SpatialRoom.PlayersInAnyRoom.TryGetValue(sharingPlayer.view.Owner.ActorNumber, out bool isSharerInRoom) && isSharerInRoom;
+
+        // If neither player is in a room, screen share is visible
+        if (!viewerInRoom && !sharerInRoom) return true;
+
+        // If both players are in rooms, they must be in the same room
+        if (viewerInRoom && sharerInRoom)
+        {
+            return SpatialRoom.PlayersInRooms.TryGetValue(myPlayer.view.Owner.ActorNumber, out int viewerRoomId) &&
+                   SpatialRoom.PlayersInRooms.TryGetValue(sharingPlayer.view.Owner.ActorNumber, out int sharerRoomId) &&
+                   viewerRoomId == sharerRoomId;
+        }
+
+        // If one player is in a room and the other isn't, screen share is not visible
+        return false;
+    }
+
+    public void SetInteractionMessage(bool enable, string text = "")
+    {
+        interactionMessage.SetActive(enable);
+        interactionMessageText.text = text;
+    }
+}
+
+--------------------------------------------------
+File: SeparatedRoomLight.cs
+Contents:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using FunkyCode;
+
+public class SeparatedRoomLight : MonoBehaviour
+{
+    private Light2D roomLight;
+    private Light2D activeGlobalLight;
+    private Light2D disabledGlobalLight;
+
+    private void Start()
+    {
+        roomLight = GetComponent<Light2D>();
+        activeGlobalLight = GameObject.Find("Global Light 2D On").GetComponent<Light2D>();
+        disabledGlobalLight = GameObject.Find("Global Light 2D Off").GetComponent<Light2D>();
+    }
+
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        if (other.TryGetComponent(out PlayerController player))
+        {
+            if (player.view.IsMine)
+            {
+                ControlRoomLightAsync(true);
+                ControlGlobalLightAsync(false);
+            }
+        }
+    }
+
+    private void OnTriggerExit2D(Collider2D other)
+    {
+        if (other.TryGetComponent(out PlayerController player))
+        {
+            if (player.view.IsMine)
+            { 
+                ControlGlobalLightAsync(true);
+                ControlRoomLightAsync(false);
+            }
+        }
+    }
+
+    private void ControlRoomLightAsync(bool active)
+    {
+        // Direct control without delay
+        roomLight.enabled = active;
+    }
+
+    private void ControlGlobalLightAsync(bool active)
+    {
+        // Direct control without delay
+        activeGlobalLight.enabled = active;
+        disabledGlobalLight.enabled = !active;
+    }
+}
+
+--------------------------------------------------
+File: UserControlsUI.cs
+Contents:
+using UnityEngine;
+using UnityEngine.UI;
+
+public class UserControlsUI : MonoBehaviour
+{
+  
+
+    [SerializeField] private Button audioButton, videoButton, screenShareButton, leaveRoomButton;
+    [SerializeField] private Sprite enableAudio, disableAudio, enableVideo, disableVideo;
+
+    private bool audioEnabled, videoEnabled, screenShareEnabled;
+
+    public bool AudioEnabled
+    {
+        get 
+        { 
+            return audioEnabled; 
+        }
+        set
+        {
+            audioEnabled = value;
+            SetAudioState();
+        }
+    }
+
+    public bool VideoEnabled
+    {
+        get
+        {
+            return videoEnabled;
+        }
+        set
+        {
+            videoEnabled = value;
+            SetVideoState();
+        }
+    }
+
+    public bool ScreenShareEnabled
+    {
+        get
+        {
+            return screenShareEnabled;
+        }
+        set
+        {
+            screenShareEnabled = value;
+        }
+    }
+
+
+    private void Start()
+    {
+        AudioEnabled = false;
+        VideoEnabled = false;
+        ScreenShareEnabled = false;
+
+        audioButton.onClick.RemoveAllListeners();
+        videoButton.onClick.RemoveAllListeners();
+        screenShareButton.onClick.RemoveAllListeners();
+        leaveRoomButton.onClick.RemoveAllListeners();
+
+        audioButton.onClick.AddListener(() =>
+        {
+            AudioEnabled = !AudioEnabled;
+            GameManager.Instance.agoraClientManager.SetLocalAudioState(AudioEnabled);
+        });
+
+        videoButton.onClick.AddListener(() =>
+        {
+            VideoEnabled = !VideoEnabled;
+            GameManager.Instance.agoraClientManager.SetLocalVideoState(VideoEnabled);
+        });
+
+        screenShareButton.onClick.AddListener(() =>
+        {
+            ScreenShareEnabled = !ScreenShareEnabled;
+            GameManager.Instance.agoraClientManager.SetScreenShareState(ScreenShareEnabled);
+        });
+
+        leaveRoomButton.onClick.AddListener(() =>
+        {
+            GameManager.Instance.LeaveRoom();
+        });
+    }
+
+    private void SetAudioState()
+    {
+        audioButton.image.sprite = audioEnabled ? enableAudio : disableAudio;
+    }
+
+    private void SetVideoState()
+    {
+        videoButton.image.sprite = videoEnabled ? enableVideo : disableVideo;
+    }
+
+    public void SetScreenShareButtonState(bool interactable)
+    {
+        screenShareButton.interactable = interactable;
+    }
+}
+
+--------------------------------------------------
+File: InteractionManager.cs
+Contents:
+using UnityEngine;
+using Photon.Pun;
+
+public class InteractionManager : MonoBehaviour
+{
+    public PlayerController player;
+
+    public Sprite DoorOpen, DoorClosed;
+
+    [HideInInspector]
+    public Collider2D colliderObject;
+
+    private PhotonView photonView;
+
+    void Awake()
+    {
+        photonView = GetComponent<PhotonView>();
+    }
+
+    void OnTriggerEnter2D(Collider2D other)
+    {
+        if (player.view.ViewID != GameManager.Instance.myPlayer.view.ViewID) return;
+
+        Debug.Log("Trigger Enter: " + other.gameObject.name);
+
+        colliderObject = other;
+
+        if (other.gameObject.CompareTag("Door"))
+        {
+            if (player.isPlayerMovingUsingMouse)
+            {
+                photonView.RPC("SyncDoorState", RpcTarget.AllBuffered, other.gameObject.name, true);
+            }
+            else
+            {
+                GameManager.Instance.SetInteractionMessage(true, "Press X to Open/Close");
+                other.gameObject.GetComponent<SpriteRenderer>().color = Color.yellow;
+            }
+        }
+        else if (other.gameObject.CompareTag("Chair"))
+        {
+            GameManager.Instance.SetInteractionMessage(true, "Press X to Sit");
+            other.gameObject.GetComponentInParent<SpriteRenderer>().color = Color.yellow;
+        }
+        else if (other.gameObject.CompareTag("Broadcast"))
+        {
+            GameManager.Instance.SetInteractionMessage(true, "You are broadcasting");
+        }
+    }
+
+    void OnTriggerExit2D(Collider2D other)
+    {
+        if (player.view.ViewID != GameManager.Instance.myPlayer.view.ViewID) return;
+
+        Debug.Log("Trigger Exit: " + other.gameObject.name);
+
+        if (other.gameObject.CompareTag("Door"))
+        {
+            other.gameObject.GetComponent<SpriteRenderer>().color = Color.white;
+        }
+        else if (other.gameObject.CompareTag("Chair"))
+        {
+            other.gameObject.GetComponentInParent<SpriteRenderer>().color = Color.white;
+        }
+
+        GameManager.Instance.SetInteractionMessage(false);
+
+        colliderObject = null;
+    }
+
+    void OnTriggerStay2D(Collider2D other)
+    {
+        if (player.view.ViewID != GameManager.Instance.myPlayer.view.ViewID) return;
+        if (other.CompareTag("Untagged")) return;
+
+        colliderObject = other;
+    }
+
+    void Update()
+    {
+        if (player.view.IsMine)
+        {
+            if (colliderObject != null)
+                OnTriggerAction(colliderObject);
+        }
+    }
+
+    public void OnTriggerAction(Collider2D other)
+    {
+        if (player.view.ViewID != GameManager.Instance.myPlayer.view.ViewID) return;
+
+        if (Input.GetKeyDown(KeyCode.X))
+        {
+            Debug.Log("Trigger Action: " + other.gameObject.name);
+
+            if (other.gameObject.CompareTag("Door"))
+            {
+                bool isOpen = other.gameObject.GetComponent<SpriteRenderer>().sprite == DoorOpen;
+                photonView.RPC("SyncDoorState", RpcTarget.AllBuffered, other.gameObject.name, !isOpen);
+            }
+            else if (other.gameObject.CompareTag("Chair"))
+            {
+                player.transform.position = other.transform.position;
+                player.transform.eulerAngles = other.transform.eulerAngles;
+                player.transform.eulerAngles = new Vector3(0f, 0f, -other.transform.eulerAngles.z);
+
+                GameManager.Instance.SetInteractionMessage(false);
+
+                string chairDirection = other.gameObject.transform.GetChild(0).name;
+                photonView.RPC("SyncChairState", RpcTarget.AllBuffered, chairDirection);
+            }
+        }
+    }
+
+    [PunRPC]
+    void SyncDoorState(string doorName, bool open)
+    {
+        GameObject door = GameObject.Find(doorName);
+        if (door != null)
+        {
+            door.GetComponent<SpriteRenderer>().sprite = open ? DoorOpen : DoorClosed;
+            door.GetComponents<BoxCollider2D>()[1].enabled = !open;
+        }
+    }
+
+    [PunRPC]
+    void SyncChairState(string chairDirection)
+    {
+        if (chairDirection == "Front")
+        {
+            player.ControlAnimation(0, -1, true);
+            player.ControlAnimation(0, 0, false);
+
+        }
+        else if (chairDirection == "Backward")
+        {
+            player.ControlAnimation(0, 1, true);
+            player.ControlAnimation(0, 0, false);
+        }
+        else if (chairDirection == "Left")
+        {
+            player.ControlAnimation(-1, 0, true);
+            player.ControlAnimation(0, 0, false);
+        }
+        else if (chairDirection == "Right")
+        {
+            player.ControlAnimation(1, 0, true);
+            player.ControlAnimation(0, 0, false);
+        }
+    }
+}
+
+--------------------------------------------------
+File: PlayerController.cs
+Contents:
+using System.Collections;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using Photon.Pun;
+using TMPro;
+using agora_gaming_rtc;
+using UnityEngine.U2D.Animation;
+using ExitGames.Client.Photon.StructWrapping;
+using Pathfinding;
+using Photon.Realtime;
+
+public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
+{
+    // --- Public Variables ---
+    public float moveSpeed = 5f;
+    public LayerMask solidObjectsLayer;
+    public LayerMask grassLayer;
+
+    public TextMeshProUGUI nicknameText;
+    public GameObject playerVideoObject;
+    public VideoSurface playerVideoSurface;
+    public GameObject playerAudioObject;
+
+    public SpriteLibrary spriteLibrary;
+    public SpriteLibraryAsset spriteLibraryAsset;
+
+    public SpriteResolver spriteResolver;
+
+    public Animator animator;
+    public Rigidbody2D rb;
+
+    public GameObject pointerPrefab;
+
+    public PhotonView view;
+
+    public int currentRoomID;
+
+    public uint agoraID;
+
+    public bool isPlayerMovingUsingMouse = false;
+
+    // --- Private Variables ---
+    private Vector3 target;
+    private GameObject pointerObject;
+    private int playerAvatar = -1;
+    private float moveHorizontal, moveVertical;
+    private Vector2 movement;
+    private uint localAgoraID;
+    private TMP_InputField chatInputField;
+
+    // --- Photon Animator View ---
+    private PhotonAnimatorView photonAnimatorView;
+
+    // --- Pathfinding ---
+    private Seeker seeker;
+    private Path path;
+    private int currentWaypoint = 0;
+    private bool isCalculatingPath = false;
+
+    // --- Animation ---
+    private bool isMoving = false;
+
+    // --- Input ---
+    private float lastClickTime = 0;
+    private float doubleClickTimeThreshold = 0.25f;
+
+    // --- Animation Hashes ---
+    private int WalkLeft = Animator.StringToHash("WalkLeft");
+    private int WalkRight = Animator.StringToHash("WalkRight");
+    private int WalkFront = Animator.StringToHash("WalkFront");
+    private int WalkBack = Animator.StringToHash("WalkBack");
+
+    // --- Enums ---
+    private enum Direction
+    {
+        Idle,
+        Left,
+        Right,
+        Front,
+        Back
+    }
+    private Direction lastDirection = Direction.Idle;
+    Navigation navigation;
+    private AvailabilityManager availabilityManager;
+
+    public Image availabilityIndicator; // Add a UI element for the indicator (e.g., a colored circle above the player)
+    private AvailabilityManager.AvailabilityStatus currentAvailability = AvailabilityManager.AvailabilityStatus.Available;
+
+    // --- MonoBehaviour Methods ---
+    private IEnumerator Start()
+    {
+        chatInputField = GameChatManager.SP.chatInputField;
+        navigation = new Navigation();
+        navigation.mode = Navigation.Mode.None;
+        chatInputField.navigation = navigation;
+
+        // Get the player's selected avatar from Photon's custom properties.
+        view.Owner.CustomProperties.TryGetValue("avatar", out playerAvatar);
+
+        // Set the sprite library asset based on the selected avatar.
+        spriteLibraryAsset = CharacterManager.Instance.CharacterSpriteLibraries[playerAvatar];
+        spriteLibrary.spriteLibraryAsset = spriteLibraryAsset;
+
+        // Set the player's nickname based on whether it's the local player or a remote player.
+        if (view.IsMine)
+        {
+            nicknameText.text = view.Owner.NickName;
+            Debug.Log($"Self Player: {view.Owner.NickName}");
+
+            // Instantiate the pointer object for the local player.
+            pointerObject = Instantiate(pointerPrefab);
+            pointerObject.SetActive(false);
+
+            // Wait for a short delay before joining the Agora channel.
+            yield return new WaitForSecondsRealtime(0f);
+
+            // Subscribe to the OnJoinChannelSuccess event.
+            IRtcEngine rtcEngine = GameManager.Instance.agoraClientManager.mRtcEngine;
+            rtcEngine.OnJoinChannelSuccess += OnJoinChannelSuccessHandler;
+
+            // Join the Agora channel.
+            GameManager.Instance.JoinAgoraChannel();
+
+            // Get the Seeker component for pathfinding.
+            seeker = GetComponent<Seeker>();
+
+            PhotonNetwork.LocalPlayer.NickName = PlayerDataManager.PlayerName;
+
+            // Set the initial name
+            SetPlayerName(PlayerDataManager.PlayerName);
+        }
+        else
+        {
+            nicknameText.text = view.Owner.NickName;
+            Debug.Log($"Other Player {view.Owner.NickName}");
+        }
+
+        // Set the GameObject's name and update Photon's custom properties.
+        gameObject.name = $"{view.Owner.NickName}_{playerAvatar}_Player";
+        ExitGames.Client.Photon.Hashtable nameIDProp = new ExitGames.Client.Photon.Hashtable();
+        nameIDProp.Add("Name", gameObject.name);
+        view.Owner.SetCustomProperties(nameIDProp);
+
+        // Add the player to the list of other players in the game.
+        GameManager.Instance.otherPlayers.Add(this);
+
+        // Initialize the Photon Animator View.
+        photonAnimatorView = GetComponentsInChildren<PhotonAnimatorView>()[0];
+    }
+
+    // New method to set the availability status and visuals
+    public void SetAvailabilityStatus(AvailabilityManager.AvailabilityStatus status)
+    {
+        currentAvailability = status;
+        UpdateAvailabilityIndicator();
+    }
+
+    private void UpdateAvailabilityIndicator()
+    {
+        if (availabilityIndicator != null) // Make sure the indicator is assigned in the Inspector
+        {
+            Color statusColor = Participants.Instance.GetStatusColor(currentAvailability);
+            availabilityIndicator.color = statusColor;
+        }
+    }
+    public override void OnPlayerPropertiesUpdate(Player targetPlayer, ExitGames.Client.Photon.Hashtable changedProps)
+    {
+        base.OnPlayerPropertiesUpdate(targetPlayer, changedProps);
+
+        if (changedProps.ContainsKey("AvailabilityStatus") && !photonView.IsMine)
+        {
+            int statusValue = (int)changedProps["AvailabilityStatus"];
+            AvailabilityManager.AvailabilityStatus status = (AvailabilityManager.AvailabilityStatus)statusValue;
+            UpdateAvailabilityVisuals(status);
+        }
+    }
+
+    private void UpdateAvailabilityVisuals(AvailabilityManager.AvailabilityStatus status)
+    {
+        Color statusColor;
+        string statusString;
+
+        switch (status)
+        {
+            case AvailabilityManager.AvailabilityStatus.Available:
+                statusColor = Color.green;
+                statusString = "Available";
+                break;
+            case AvailabilityManager.AvailabilityStatus.Busy:
+                statusColor = Color.yellow;
+                statusString = "Busy";
+                break;
+            case AvailabilityManager.AvailabilityStatus.DoNotDisturb:
+                statusColor = Color.red;
+                statusString = "Do Not Disturb";
+                break;
+            default:
+                statusColor = Color.green;
+                statusString = "Available";
+                break;
+        }
+
+        // Update the player's visual representation (e.g., a status indicator above the player's head)
+        // You'll need to implement this part based on your game's specific visuals
+
+        // Update the player's profile if it's open
+        PlayerProfile profile = GetComponent<PlayerProfile>();
+        if (profile != null)
+        {
+            profile.UpdateAvailabilityStatus(statusColor, statusString);
+        }
+    }
+    public void SetPlayerName(string newName)
+    {
+        if (view.IsMine)
+        {
+            photonView.RPC("UpdatePlayerName", RpcTarget.AllBuffered, newName);
+        }
+    }
+
+    [PunRPC]
+    public void UpdatePlayerName(string newName)
+    {
+        if (view.IsMine)
+        {
+            photonView.RPC("UpdatePlayerNameRPC", RpcTarget.AllBuffered, newName, view.OwnerActorNr);
+        }
+    }
+
+    [PunRPC]
+    private void UpdatePlayerNameRPC(string newName, int actorNumber)
+    {
+        Player player = PhotonNetwork.CurrentRoom.GetPlayer(actorNumber);
+        if (player != null && player == view.Owner)
+        {
+            nicknameText.text = newName;
+            gameObject.name = $"{newName}_{playerAvatar}_Player";
+
+            if (view.IsMine)
+            {
+                PhotonNetwork.NickName = newName;
+                PlayerDataManager.PlayerName = newName;
+            }
+
+            // Update custom properties
+            ExitGames.Client.Photon.Hashtable properties = new ExitGames.Client.Photon.Hashtable
+            {
+                { "Name", gameObject.name }
+            };
+            view.Owner.SetCustomProperties(properties);
+
+            // Update participants list
+            FindObjectOfType<Participants>().UpdateParticipantList();
+        }
+    }
+
+    private bool IsAnyInputFieldFocused()
+    {
+        // Check if any input field is focused
+        if (EventSystem.current.currentSelectedGameObject != null)
+        {
+            TMP_InputField inputField = EventSystem.current.currentSelectedGameObject.GetComponent<TMP_InputField>();
+            if (inputField != null && inputField.isFocused)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void Update()
+    {
+        // Handle input and animation for the local player.
+        if (view.IsMine)
+        {
+            // Check if an input field is selected. If so, return early.
+            // Check if the chat input field is focused. If so, stop any ongoing movement and return early.
+            if (IsAnyInputFieldFocused())
+            {
+                StopMovingAlongPath();
+                rb.velocity = Vector2.zero;
+                return;
+            }
+
+            // Check if there is keyboard input and if the player is currently moving using the mouse.
+            // If so, stop the pathfinding.
+            bool hasKeyboardInput = Mathf.Abs(Input.GetAxis("Horizontal")) > 0.01f || Mathf.Abs(Input.GetAxis("Vertical")) > 0.01f;
+            if (isPlayerMovingUsingMouse && hasKeyboardInput && path != null)
+            {
+                StopMovingAlongPath();
+            }
+
+            HandleLocalPlayerInput();
+            ControlLocalPlayerAnimation();
+        }
+        else
+        {
+            // Handle movement and animation for remote players.
+            HandleRemotePlayerMovement();
+            ControlRemotePlayerAnimation();
+        }
+    }
+
+    private void OnDisable()
+    {
+        // Remove the player from the list of other players when it is disabled.
+        GameManager.Instance.otherPlayers.Remove(this);
+    }
+
+    // --- IPunObservable Implementation ---
+    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
+    {
+        // Synchronize the player's movement across the network.
+        if (stream.IsWriting)
+        {
+            stream.SendNext(moveHorizontal);
+            stream.SendNext(moveVertical);
+            //stream.SendNext(isMoving);
+        }
+        else
+        {
+            moveHorizontal = (float)stream.ReceiveNext();
+            moveVertical = (float)stream.ReceiveNext();
+            //isMoving = (bool)stream.ReceiveNext();
+        }
+    }
+
+    // --- Private Methods ---
+    private void OnJoinChannelSuccessHandler(string channelName, uint uid, int elapsed)
+    {
+        // Set the local Agora ID and update Photon's custom properties.
+        localAgoraID = uid;
+        ExitGames.Client.Photon.Hashtable agoraIDProp = new ExitGames.Client.Photon.Hashtable();
+        agoraIDProp.Add("agoraID", localAgoraID.ToString());
+        view.Owner.SetCustomProperties(agoraIDProp);
+    }
+
+    private void HandleLocalPlayerInput()
+    {
+
+
+        // Get the horizontal and vertical input axes.
+        moveHorizontal = Input.GetAxis("Horizontal");
+        moveVertical = Input.GetAxis("Vertical");
+
+        // If there is keyboard input and the player is currently moving using the mouse, stop the pathfinding.
+        if (Mathf.Abs(Input.GetAxis("Horizontal")) > 0.01f || Mathf.Abs(Input.GetAxis("Vertical")) > 0.01f)
+        {
+            if (isPlayerMovingUsingMouse)
+            {
+                StopMovingAlongPath();
+            }
+        }
+
+        // Apply velocity for keyboard movement if the player is not moving using the mouse and a path is not being calculated.
+        if (!isPlayerMovingUsingMouse && !isCalculatingPath)
+        {
+            animator.enabled = true;
+            movement = new Vector2(moveHorizontal, moveVertical);
+            rb.velocity = movement * moveSpeed;
+        }
+
+        // Handle mouse click input for movement.
+        if (Input.GetMouseButtonDown(0))
+        {
+            // Check if the click is over a UI element
+            if (EventSystem.current.IsPointerOverGameObject())
+            {
+                // Click is over a UI element, don't start pathfinding
+                return;
+            }
+
+            // Perform a raycast to check if the click is on a collider.
+            RaycastHit2D hit = Physics2D.Raycast(Camera.main.ScreenToWorldPoint(Input.mousePosition), Vector2.zero, Mathf.Infinity);
+
+            // If the click is not on a collider or the collider is a trigger, handle it as a potential double click for movement.
+            if (hit.collider == null || hit.collider.isTrigger)
+            {
+                float clickTime = Time.time;
+                if (clickTime - lastClickTime < doubleClickTimeThreshold)
+                {
+                    // Double click detected.
+                    isPlayerMovingUsingMouse = true;
+                    target = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+                    target.z = transform.position.z;
+
+                    // Calculate a new path if one is not already being calculated.
+                    if (!isCalculatingPath)
+                    {
+                        isCalculatingPath = true;
+                        FindPathToTarget();
+                    }
+                }
+                lastClickTime = clickTime;
+            }
+            else
+            {
+                Debug.Log("Click is on a non-trigger collider, ignoring.");
+            }
+        }
+
+        // Move the player along the calculated path if mouse movement is enabled.
+        if (isPlayerMovingUsingMouse)
+        {
+            animator.enabled = true;
+            MoveAlongPath();
+
+            // Stop moving if the player has reached the target destination.
+            if (Vector3.Distance(transform.position, target) < 0.2f)
+            {
+                StopMovingAlongPath();
+            }
+        }
+    }
+
+    private void HandleRemotePlayerMovement()
+    {
+        // Apply velocity for remote players based on the received movement data.
+        movement = new Vector2(moveHorizontal, moveVertical);
+        rb.velocity = movement * moveSpeed;
+    }
+
+    private void ControlLocalPlayerAnimation()
+    {
+        // Set the isMoving flag based on the player's velocity or pathfinding status.
+        isMoving = (movement != Vector2.zero && !isPlayerMovingUsingMouse) || (isPlayerMovingUsingMouse && path != null);
+
+        // Control the player's animation based on its movement.
+        ControlAnimation(moveHorizontal, moveVertical, isMoving);
+    }
+
+    private void ControlRemotePlayerAnimation()
+    {
+        // Set the isMoving flag for remote players based on the received movement data.
+        isMoving = movement != Vector2.zero;
+
+        // Control the remote player's animation based on its movement.
+        ControlAnimation(moveHorizontal, moveVertical, isMoving);
+    }
+
+    private void FindPathToTarget()
+    {
+        // Use the A* pathfinding algorithm to find a path to the target destination.
+        seeker.StartPath(transform.position, target, OnPathComplete);
+    }
+
+    private void OnPathComplete(Path p)
+    {
+        // Reset the isCalculatingPath flag.
+        isCalculatingPath = false;
+
+        // If a valid path was found, update the pathfinding variables and activate the pointer object.
+        if (!p.error)
+        {
+            path = p;
+            currentWaypoint = 0;
+            pointerObject.transform.position = target;
+            pointerObject.SetActive(true);
+        }
+        else
+        {
+            Debug.LogError("Pathfinding error: " + p.errorLog);
+            StopMovingAlongPath();
+        }
+    }
+
+
+
+    private void StopMovingAlongPath()
+    {
+        // Stop the player's movement and reset the pathfinding variables.
+        isPlayerMovingUsingMouse = false;
+        path = null;
+        currentWaypoint = 0;
+        Debug.Log(pointerObject);
+        if (pointerObject.active) pointerObject.SetActive(false);
+
+        // Reset the movement and animation variables.
+        moveHorizontal = 0;
+        moveVertical = 0;
+        isMoving = false;
+
+        // Reset the animation to the idle state.
+        ControlAnimation(0, 0, false);
+        //Debug.Log("Stop!");
+    }
+
+    private void MoveAlongPath()
+    {
+        // If there is no path, return early.
+        if (path == null) return;
+
+        // If the player has reached the end of the path, stop moving.
+        if (currentWaypoint >= path.vectorPath.Count)
+        {
+            StopMovingAlongPath();
+            return;
+        }
+
+        // Calculate the direction to the next waypoint and move the player towards it.
+        Vector3 direction = (path.vectorPath[currentWaypoint] - transform.position).normalized;
+        transform.position = Vector3.MoveTowards(transform.position, path.vectorPath[currentWaypoint], moveSpeed * Time.deltaTime);
+
+        // If the player is close enough to the current waypoint, move to the next one.
+        if (Vector3.Distance(transform.position, path.vectorPath[currentWaypoint]) < 0.17f)
+        {
+            currentWaypoint++;
+        }
+
+        if (currentWaypoint == 1)
+        {
+            moveHorizontal = -direction.x;
+            moveVertical = -direction.y;
+            return;
+        }
+        // Update the movement and animation variables based on the current direction.
+        moveHorizontal = direction.x;
+        moveVertical = direction.y;
+
+    }
+
+    public void ControlAnimation(float x, float y, bool isMoving)
+    {
+        // If the player is moving, determine the current direction and animation state.
+        if (isMoving)
+        {
+            Direction currentDirection = GetDirection(x, y);
+            Debug.Log("Direction: " + currentDirection.ToString() + " " + "x: " + x + " " + "y: " + y);
+            int targetAnimationState = GetAnimationState(currentDirection);
+
+            if (currentDirection != lastDirection ||
+                                     animator.GetCurrentAnimatorStateInfo(0).IsName("IdleFront") || animator.GetCurrentAnimatorStateInfo(0).IsName("IdleBack") || animator.GetCurrentAnimatorStateInfo(0).IsName("IdleLeft") || animator.GetCurrentAnimatorStateInfo(0).IsName("IdleRight"))
+            {
+                animator.CrossFade(targetAnimationState, 0.0f, 0);
+            }
+
+
+            lastDirection = currentDirection;
+        }
+        else
+        {
+            // Player is not moving. Set the idle animation based on the previous direction.
+            switch (lastDirection)
+            {
+                case Direction.Idle:
+                    animator.CrossFade(IdleFront, 0, 0);
+                    break;
+                case Direction.Left:
+                    animator.CrossFade(IdleLeft, 0, 0);
+                    break;
+                case Direction.Right:
+                    animator.CrossFade(IdleRight, 0, 0);
+                    break;
+                case Direction.Front:
+                    animator.CrossFade(IdleFront, 0, 0);
+                    break;
+                case Direction.Back:
+                    animator.CrossFade(IdleBack, 0, 0);
+                    break;
+            }
+        }
+    }
+
+    // Define the idle animations for different directions.
+    private int IdleFront = Animator.StringToHash("IdleFront");
+    private int IdleBack = Animator.StringToHash("IdleBack");
+    private int IdleLeft = Animator.StringToHash("IdleLeft");
+    private int IdleRight = Animator.StringToHash("IdleRight");
+
+    private int GetAnimationState(Direction direction)
+    {
+        // Return the appropriate animation state based on the given direction.
+        switch (direction)
+        {
+            case Direction.Idle:
+                return IdleFront;
+            case Direction.Left:
+                return WalkLeft;
+            case Direction.Right:
+                return WalkRight;
+            case Direction.Front:
+                return WalkFront;
+            case Direction.Back:
+                return WalkBack;
+            default:
+                return IdleFront;
+        }
+    }
+
+    private void ApplyAnimationState(Direction direction)
+    {
+        // Apply the animation state based on the given direction.
+        switch (direction)
+        {
+            case Direction.Idle:
+                animator.CrossFade(IdleFront, 0, 0);
+                break;
+            case Direction.Left:
+                animator.CrossFade(WalkLeft, 0, 0);
+                break;
+            case Direction.Right:
+                animator.CrossFade(WalkRight, 0, 0);
+                break;
+            case Direction.Front:
+                animator.CrossFade(WalkFront, 0, 0);
+                break;
+            case Direction.Back:
+                animator.CrossFade(WalkBack, 0, 0);
+                break;
+        }
+    }
+
+    private Direction GetDirection(float x, float y)
+    {
+        // Determine the movement direction based on the given x and y values.
+        if (x == 0 && y == 0)
+        {
+            return Direction.Idle;
+        }
+        else if (Mathf.Abs(y) > Mathf.Abs(x))
+        {
+            return y < 0 ? Direction.Front : Direction.Back;
+        }
+        else
+        {
+            return x < 0 ? Direction.Left : Direction.Right;
+        }
+    }
+
+    // --- Public Methods ---
+    public void SendVideoState(bool enable)
+    {
+        // Send an RPC to all clients to update the player's video state.
+        view.RPC(nameof(OnReceiveVideoState), RpcTarget.All, enable);
+    }
+
+    [PunRPC]
+    public void OnReceiveVideoState(bool enable)
+    {
+        // Update the player's video object and surface based on the received video state.
+        playerVideoObject.SetActive(enable);
+        playerVideoSurface.SetForUser(view.ViewID == GameManager.Instance.myPlayer.view.ViewID ? 0 : (uint)view.ViewID);
+        playerVideoSurface.SetEnable(enable);
+    }
+
+    public void SendAudioState(bool enable)
+    {
+        // Send an RPC to all clients to update the player's audio state.
+        view.RPC(nameof(OnReceiveAudioState), RpcTarget.All, enable);
+    }
+
+    [PunRPC]
+    public void OnReceiveAudioState(bool enable)
+    {
+        // Update the player's audio object based on the received audio state.
+        playerAudioObject.SetActive(enable);
+    }
+
+    public void SendScreenShareState(bool enable)
+    {
+        ExitGames.Client.Photon.Hashtable props = new ExitGames.Client.Photon.Hashtable
+        {
+            { "isScreenSharing", enable }
+        };
+        view.Owner.SetCustomProperties(props);
+
+        view.RPC(nameof(OnReceiveScreenShareState), RpcTarget.All, enable);
+    }
+
+    [PunRPC]
+    public void OnReceiveScreenShareState(bool enable)
+    {
+        // If screen sharing is enabled, disable the player's video.
+        if (enable)
+        {
+            SendVideoState(false);
+        }
+
+        // Update the screen share object state in the game manager.
+        GameManager.Instance.SetScreenShareObjectState((uint)view.ViewID, view.Owner.NickName, enable);
+    }
+}
+--------------------------------------------------
+File: PlayerDataManager.cs
+Contents:
+using UnityEngine;
+
+public static class PlayerDataManager
+{
+    private static readonly string playerNameKey = "p_name";
+    private static readonly string playerRoomNameKey = "p_room_name";
+    private static readonly string playerAvatarKey = "p_avatar_number";
+
+    public static string PlayerName
+    {
+        get => PlayerPrefs.GetString(playerNameKey, "");
+        set => PlayerPrefs.SetString(playerNameKey, value);
+    }
+
+    public static string PlayerRoomName
+    {
+        get => PlayerPrefs.GetString(playerRoomNameKey, "");
+        set => PlayerPrefs.SetString(playerRoomNameKey, value);
+    }
+
+    public static int PlayerAvatar
+    {
+        get => PlayerPrefs.GetInt(playerAvatarKey, -1);
+        set => PlayerPrefs.SetInt(playerAvatarKey, value);
+    }
+
+    public static void ClearAllPlayerData()
+    {
+        PlayerPrefs.DeleteAll();
+    }
+}
+
+--------------------------------------------------
+File: PlayerProfile.cs
+Contents:
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using System.Collections;
+using UnityEngine.EventSystems;
+using Photon.Pun;
+using Photon.Realtime;
+using System;
+
+public class PlayerProfile : MonoBehaviourPunCallbacks
+{
+    public Image avatarImage;
+    public TMP_InputField nameInputField;
+    public Image availabilityCircle;
+    public TextMeshProUGUI availabilityText;
+    public TMP_InputField statusInputField;
+    public Button editNameButton;
+    public TMP_InputField messageInputField;
+
+    private CanvasGroup canvasGroup;
+    private bool isMainPlayer;
+    private bool isEditingName = false;
+
+    //private Color originalInputFieldColor;
+    private float hoverDuration = 0.2f;
+
+    private PhotonView photonView;
+    private Player profilePlayer;
+
+    private void Awake()
+    {
+        photonView = GetComponent<PhotonView>();
+        if (photonView == null)
+        {
+            Debug.LogError("PhotonView component is missing on the PlayerProfile object!");
+        }
+
+        if (photonView.IsMine)
+        {
+            LoadSavedStatus();
+        }
+        else
+        {
+            UpdateAvailabilityFromPlayerProperties(photonView.Owner);
+        }
+
+        canvasGroup = GetComponent<CanvasGroup>();
+        if (canvasGroup == null)
+        {
+            canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        }
+        canvasGroup.alpha = 0;
+        gameObject.SetActive(false);
+
+        if (statusInputField != null) statusInputField.onValueChanged.AddListener(OnStatusChanged);
+        if (statusInputField != null) statusInputField.onEndEdit.AddListener(OnStatusEndEdit);
+        if (statusInputField != null) statusInputField.onSelect.AddListener(OnStatusInputFieldSelect);
+        if (statusInputField != null) statusInputField.onDeselect.AddListener(OnStatusInputFieldDeselect);
+        if (editNameButton != null) editNameButton.onClick.AddListener(ToggleNameEdit);
+        if (nameInputField != null) nameInputField.readOnly = true;
+        if (nameInputField != null) nameInputField.onEndEdit.AddListener(OnNameInputEndEdit);
+        if (messageInputField != null) messageInputField.onEndEdit.AddListener(OnMessageInputEndEdit);
+    }
+
+    private void OnStatusInputFieldSelect(string arg0)
+    {
+        statusInputField.placeholder.gameObject.SetActive(false);
+
+    }
+
+    private void OnStatusInputFieldDeselect(string arg0)
+    {
+        statusInputField.placeholder.gameObject.SetActive(true);
+    }
+
+    public void SetProfilePlayer(Player player)
+    {
+        profilePlayer = player;
+    }
+
+    private void OnMessageInputEndEdit(string value)
+    {
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        {
+            SendMessageToPrivateChat(value);
+            messageInputField.text = "";
+        }
+    }
+
+    private void SendMessageToPrivateChat(string message)
+    {
+        if (string.IsNullOrEmpty(message) || profilePlayer == null) return;
+
+        PrivateChat.Instance.SendMessageToPlayer(profilePlayer, message);
+        Hide();
+    }
+
+    private void LoadSavedStatus()
+    {
+        if (PhotonNetwork.LocalPlayer.CustomProperties.TryGetValue("AvailabilityStatus", out object savedStatus))
+        {
+            UpdateAvailabilityStatus((AvailabilityManager.AvailabilityStatus)savedStatus);
+        }
+    }
+
+    private void UpdateAvailabilityFromPlayerProperties(Player player)
+    {
+        if (player.CustomProperties.TryGetValue("AvailabilityStatus", out object status))
+        {
+            UpdateAvailabilityStatus((AvailabilityManager.AvailabilityStatus)status);
+        }
+    }
+
+    public void UpdateAvailabilityStatus(AvailabilityManager.AvailabilityStatus status)
+    {
+        Color statusColor;
+        string statusString;
+
+        switch (status)
+        {
+            case AvailabilityManager.AvailabilityStatus.Available:
+                statusColor = Color.green;
+                statusString = "Available";
+                break;
+            case AvailabilityManager.AvailabilityStatus.Busy:
+                statusColor = Color.yellow;
+                statusString = "Busy";
+                break;
+            case AvailabilityManager.AvailabilityStatus.DoNotDisturb:
+                statusColor = Color.red;
+                statusString = "Do Not Disturb";
+                break;
+            default:
+                statusColor = Color.green;
+                statusString = "Available";
+                break;
+        }
+
+        if (availabilityCircle != null)
+        {
+            availabilityCircle.color = statusColor;
+        }
+
+        if (availabilityText != null)
+        {
+            availabilityText.text = statusString;
+        }
+    }
+
+    public override void OnPlayerPropertiesUpdate(Player targetPlayer, ExitGames.Client.Photon.Hashtable changedProps)
+    {
+        base.OnPlayerPropertiesUpdate(targetPlayer, changedProps);
+
+        if (changedProps.ContainsKey("AvailabilityStatus") && targetPlayer == photonView.Owner)
+        {
+            int statusValue = (int)changedProps["AvailabilityStatus"];
+            UpdateAvailabilityStatus((AvailabilityManager.AvailabilityStatus)statusValue);
+        }
+    }
+
+    private void OnStatusChanged(string newStatus)
+    {
+        photonView.RPC("UpdatePlayerStatus", RpcTarget.All, newStatus);
+    }
+
+    private void OnStatusEndEdit(string searchText)
+    {
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        {
+            Debug.Log("Enter key pressed!");
+            int currentCaretPosition = statusInputField.caretPosition;
+            EventSystem.current.SetSelectedGameObject(null);
+            EventSystem.current.SetSelectedGameObject(statusInputField.gameObject);
+
+            StartCoroutine(SetPosition());
+
+            IEnumerator SetPosition()
+            {
+                int width = statusInputField.caretWidth;
+                statusInputField.caretWidth = 0;
+
+                yield return new WaitForEndOfFrame();
+
+                statusInputField.caretWidth = width;
+                statusInputField.caretPosition = currentCaretPosition;
+            }
+        }
+    }
+
+    [PunRPC]
+    private void UpdatePlayerStatus(string newStatus)
+    {
+        if (photonView.IsMine)
+        {
+            ExitGames.Client.Photon.Hashtable properties = new ExitGames.Client.Photon.Hashtable
+            {
+                { "PlayerStatus", newStatus }
+            };
+            PhotonNetwork.LocalPlayer.SetCustomProperties(properties);
+        }
+    }
+
+    private void Update()
+    {
+        if (isEditingName && Input.GetMouseButtonDown(0))
+        {
+            if (!RectTransformUtility.RectangleContainsScreenPoint(
+                    nameInputField.GetComponent<RectTransform>(),
+                    Input.mousePosition,
+                    null) &&
+                !RectTransformUtility.RectangleContainsScreenPoint(
+                    editNameButton.GetComponent<RectTransform>(),
+                    Input.mousePosition,
+                    null))
+            {
+                EndNameEdit();
+            }
+        }
+    }
+
+    private IEnumerator ChangeInputFieldColor(TMP_InputField inputField, Color targetColor)
+    {
+        Image inputFieldImage = inputField.GetComponentInParent<Image>();
+        Color startColor = inputFieldImage.color;
+        float elapsedTime = 0f;
+
+        while (elapsedTime < hoverDuration)
+        {
+            elapsedTime += Time.deltaTime;
+            float t = elapsedTime / hoverDuration;
+            inputFieldImage.color = Color.Lerp(startColor, targetColor, t);
+            yield return null;
+        }
+
+        inputFieldImage.color = targetColor;
+    }
+
+    public void SetupProfile(Sprite avatar, string playerName, bool isMain)
+    {
+        avatarImage.sprite = avatar;
+        nameInputField.text = playerName;
+        isMainPlayer = isMain;
+
+        if (isMainPlayer)
+        {
+            if (statusInputField != null) statusInputField.gameObject.SetActive(true);
+            if (editNameButton != null) editNameButton.gameObject.SetActive(true);
+            if (messageInputField != null) messageInputField.gameObject.SetActive(false);
+        }
+        else
+        {
+            if (statusInputField != null) statusInputField.gameObject.SetActive(false);
+            if (editNameButton != null) editNameButton.gameObject.SetActive(false);
+            if (messageInputField != null) messageInputField.gameObject.SetActive(true);
+        }
+    }
+
+    public void Show()
+    {
+        gameObject.SetActive(true);
+
+        StartCoroutine(FadeIn());
+    }
+
+    public void Hide()
+    {
+        StartCoroutine(FadeOutAndDestroy());
+    }
+
+    private IEnumerator FadeOutAndDestroy()
+    {
+        float duration = 0.3f;
+        float elapsedTime = 0;
+
+        while (elapsedTime < duration)
+        {
+            elapsedTime += Time.deltaTime;
+            canvasGroup.alpha = Mathf.Lerp(1, 0, elapsedTime / duration);
+            yield return null;
+        }
+
+        Destroy(gameObject);
+    }
+
+    private IEnumerator FadeIn()
+    {
+        float duration = 0.3f;
+        float elapsedTime = 0;
+
+        while (elapsedTime < duration)
+        {
+            elapsedTime += Time.deltaTime;
+            canvasGroup.alpha = Mathf.Lerp(0, 1, elapsedTime / duration);
+            yield return null;
+        }
+
+        canvasGroup.alpha = 1;
+
+        // Set alpha for text fields
+        if (statusInputField != null) statusInputField.placeholder.gameObject.GetComponent<TMP_Text>().alpha = 0.5f;
+        if (editNameButton != null) editNameButton.GetComponentInChildren<TMP_Text>().alpha = 0.5f;
+        if (messageInputField != null) messageInputField.placeholder.gameObject.GetComponent<TMP_Text>().alpha = 0.5f;
+    }
+
+    public bool IsPointInside(Vector2 point)
+    {
+        return RectTransformUtility.RectangleContainsScreenPoint(GetComponent<RectTransform>(), point, null);
+    }
+
+    private IEnumerator ToggleNameEditDelayed()
+    {
+        // Wait for a short moment to allow deselection event to process
+        yield return new WaitForSeconds(0.05f);
+
+        ToggleNameEdit();
+    }
+
+    private void ToggleNameEdit()
+    {
+        isEditingName = !isEditingName;
+        nameInputField.readOnly = !isEditingName;
+        if (isEditingName)
+        {
+            nameInputField.Select();
+            nameInputField.ActivateInputField();
+        }
+        else
+        {
+            isEditingName = !isEditingName;
+            EndNameEdit();
+        }
+    }
+
+
+    private void OnNameInputEndEdit(string value)
+    {
+        if (isEditingName && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
+        {
+            EndNameEdit();
+        }
+    }
+
+
+    private void SaveNameChanges()
+    {
+        string newName = nameInputField.text.Trim();
+        if (!string.IsNullOrEmpty(newName) && newName != PhotonNetwork.NickName)
+        {
+            photonView.RPC("UpdatePlayerNameRPC", RpcTarget.AllBuffered, newName, photonView.Owner.ActorNumber);
+        }
+    }
+
+
+
+    private void EndNameEdit()
+    {
+        if (isEditingName)
+        {
+            SaveNameChanges();
+            isEditingName = false;
+            nameInputField.readOnly = true;
+            EventSystem.current.SetSelectedGameObject(null);
+        }
+    }
+
+    [PunRPC]
+    private void UpdatePlayerNameRPC(string newName, int actorNumber)
+    {
+        Player player = PhotonNetwork.CurrentRoom.GetPlayer(actorNumber);
+        if (player != null)
+        {
+            player.NickName = newName;
+            if (player.IsLocal)
+            {
+                PhotonNetwork.NickName = newName;
+                PlayerDataManager.PlayerName = newName;
+            }
+
+            nameInputField.text = newName;
+
+            // Update the player's GameObject name
+            GameObject playerObj = GameObject.Find($"{player.NickName}_{player.CustomProperties["avatar"]}_Player");
+            if (playerObj != null)
+            {
+                playerObj.name = $"{newName}_{player.CustomProperties["avatar"]}_Player";
+            }
+
+            // Update other UI elements or game logic here
+            FindObjectOfType<Participants>().UpdateParticipantList();
+
+            // Update the PlayerController
+            PlayerController[] playerControllers = FindObjectsOfType<PlayerController>();
+            foreach (PlayerController pc in playerControllers)
+            {
+                if (pc.view.Owner == player)
+                {
+                    pc.UpdatePlayerName(newName);
+                    break;
+                }
+            }
+        }
+    }
+
+    public void UpdateAvailabilityStatus(Color statusColor, string statusText)
+    {
+        if (availabilityCircle != null)
+        {
+            availabilityCircle.color = statusColor;
+        }
+
+        if (availabilityText != null)
+        {
+            availabilityText.text = statusText;
+        }
+    }
+
+}
+--------------------------------------------------
+File: SpatialAudio.cs
+Contents:
+using System.Collections.Generic;
+using UnityEngine;
+using Photon.Pun;
+using agora_gaming_rtc;
+using Photon.Realtime;
+
+public class SpatialAudio : MonoBehaviourPunCallbacks
+{
+    [SerializeField] private float radius;
+    private PhotonView PV;
+    private IRtcEngine agoraRtcEngine;
+    private static readonly Dictionary<Player, SpatialAudio> spatialAudioFromPlayers = new Dictionary<Player, SpatialAudio>();
+    private bool isInRoom = false;
+    private int currentRoomId = 0;
+
+    void Awake()
+    {
+        PV = GetComponent<PhotonView>();
+        spatialAudioFromPlayers[PV.Owner] = this;
+    }
+
+    void OnDestroy()
+    {
+        spatialAudioFromPlayers.Remove(PV.Owner);
+    }
+
+    void Update()
+    {
+        if (!PV.IsMine) return; // Only run on the local player
+
+        if (agoraRtcEngine == null)
+        {
+            agoraRtcEngine = GameManager.Instance.agoraClientManager.mRtcEngine;
+        }
+
+        foreach (Player player in PhotonNetwork.PlayerList)
+        {
+            if (player == PV.Owner) continue; // Skip local player
+            if (!player.CustomProperties.TryGetValue("agoraID", out object agoraIDObj)) continue;
+            uint agoraID = uint.Parse(agoraIDObj.ToString());
+
+            int volume;
+            if (isInRoom)
+            {
+                // If local player is in a room, only allow audio from players in the same room
+                if (SpatialRoom.PlayersInRooms.TryGetValue(player.ActorNumber, out int playerRoomId))
+                {
+                    volume = (playerRoomId == currentRoomId) ? 100 : 0;
+                }
+                else
+                {
+                    volume = 0;
+                }
+            }
+            else
+            {
+                // If local player is not in a room, mute players who are in rooms
+                if (SpatialRoom.PlayersInRooms.ContainsKey(player.ActorNumber))
+                {
+                    volume = 0;
+                }
+                else
+                {
+                    // Apply spatial audio for players outside rooms
+                    if (!player.CustomProperties.TryGetValue("Name", out object NameObj)) continue;
+                    string objName = NameObj.ToString();
+                    GameObject otherPlayerObj = GameObject.Find(objName);
+
+                    if (otherPlayerObj != null)
+                    {
+                        Vector3 otherPosition = otherPlayerObj.transform.position;
+                        float distance = Vector3.Distance(transform.position, otherPosition);
+                        volume = GetVolume(distance);
+                    }
+                    else
+                    {
+                        volume = 0;
+                    }
+                }
+            }
+            agoraRtcEngine = GameManager.Instance.agoraClientManager.mRtcEngine;
+            agoraRtcEngine.AdjustUserPlaybackSignalVolume(agoraID, volume);
+        }
+    }
+
+    private int GetVolume(float distance)
+    {
+        if (distance <= 0)
+        {
+            return 100;
+        }
+        else if (distance >= radius)
+        {
+            return 0;
+        }
+        else
+        {
+            return (int)(100 * (1 - distance / radius));
+        }
+    }
+
+    public void SetInRoom(bool inRoom, int roomId)
+    {
+        isInRoom = inRoom;
+        currentRoomId = roomId;
+    }
+}
+--------------------------------------------------
+File: AvailabilityManager.cs
+Contents:
+using UnityEngine;
+using UnityEngine.UI;
+using Photon.Pun;
+using Photon.Realtime;
+using System.Collections;
+using TMPro;
+using ExitGames.Client.Photon;
+using UnityEngine.EventSystems;
+
+public class AvailabilityManager : MonoBehaviourPunCallbacks
+{
+    public enum AvailabilityStatus
+    {
+        Available,
+        Busy,
+        DoNotDisturb
+    }
+
+    public Button availabilityButton;
+    public GameObject availabilityWindow;
+    public Button availableButton;
+    public Button busyButton;
+    public Button doNotDisturbButton;
+    public Image statusCircle;
+    public TextMeshProUGUI statusText;
+
+    public Color availableColor = Color.green;
+    public Color busyColor = Color.yellow;
+    public Color doNotDisturbColor = Color.red;
+
+    public float hoverDuration = 0.2f;
+    public float windowFadeDuration = 0.3f;
+
+    private CanvasGroup windowCanvasGroup;
+    private AvailabilityStatus currentStatus = AvailabilityStatus.Available;
+
+    private void Start()
+    {
+        windowCanvasGroup = availabilityWindow.GetComponent<CanvasGroup>();
+        if (windowCanvasGroup == null)
+        {
+            windowCanvasGroup = availabilityWindow.AddComponent<CanvasGroup>();
+        }
+
+        availabilityWindow.SetActive(false);
+
+        availabilityButton.onClick.AddListener(ToggleAvailabilityWindow);
+
+        availableButton.onClick.AddListener(() => SetStatus(AvailabilityStatus.Available));
+        busyButton.onClick.AddListener(() => SetStatus(AvailabilityStatus.Busy));
+        doNotDisturbButton.onClick.AddListener(() => SetStatus(AvailabilityStatus.DoNotDisturb));
+
+        if (photonView.IsMine)
+        {
+            LoadSavedStatus();
+        }
+        UpdateStatusVisuals();
+    }
+
+    private void LoadSavedStatus()
+    {
+        if (PhotonNetwork.LocalPlayer.CustomProperties.TryGetValue("AvailabilityStatus", out object savedStatus))
+        {
+            currentStatus = (AvailabilityStatus)savedStatus;
+        }
+        else
+        {
+            currentStatus = AvailabilityStatus.Available;
+        }
+    }
+
+    private void Update()
+    {
+        if (availabilityWindow.activeSelf && Input.GetMouseButtonDown(0))
+        {
+            if (!RectTransformUtility.RectangleContainsScreenPoint(
+                availabilityWindow.GetComponent<RectTransform>(),
+                Input.mousePosition,
+                null))
+            {
+                CloseAvailabilityWindow();
+            }
+        }
+    }
+
+    private void ToggleAvailabilityWindow()
+    {
+        if (availabilityWindow.activeSelf)
+        {
+            CloseAvailabilityWindow();
+        }
+        else
+        {
+            OpenAvailabilityWindow();
+        }
+    }
+
+    private void OpenAvailabilityWindow()
+    {
+        availabilityWindow.SetActive(true);
+        StartCoroutine(FadeWindow(0f, 1f));
+
+        // Calculate position
+        RectTransform profileRect = transform.parent.GetComponent<RectTransform>();
+        RectTransform windowRect = availabilityWindow.GetComponent<RectTransform>();
+
+        Vector3 profileWorldPos = profileRect.transform.position;
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(transform.parent.GetComponent<RectTransform>(), profileWorldPos, null, out Vector2 localPoint);
+
+        float xOffset = 400;
+        float yPosition = localPoint.y;
+
+        windowRect.anchoredPosition = new Vector2(xOffset, yPosition);
+    }
+
+    private void CloseAvailabilityWindow()
+    {
+        StartCoroutine(FadeWindow(1f, 0f));
+    }
+
+    private IEnumerator FadeWindow(float startAlpha, float endAlpha)
+    {
+        float elapsedTime = 0f;
+        while (elapsedTime < windowFadeDuration)
+        {
+            elapsedTime += Time.deltaTime;
+            float t = elapsedTime / windowFadeDuration;
+            windowCanvasGroup.alpha = Mathf.Lerp(startAlpha, endAlpha, t);
+            yield return null;
+        }
+
+        windowCanvasGroup.alpha = endAlpha;
+        if (endAlpha == 0f)
+        {
+            availabilityWindow.SetActive(false);
+        }
+    }
+
+    private void SetStatus(AvailabilityStatus status)
+    {
+        if (!photonView.IsMine) return;
+
+        currentStatus = status;
+        UpdateStatusVisuals();
+        SaveStatus();
+
+        // Update the PlayerController using the player's actor number
+        photonView.RPC("UpdateAvailabilityStatusRPC", RpcTarget.AllBuffered, (int)status, PhotonNetwork.LocalPlayer.ActorNumber); // Pass actor number
+
+        // Update all open profiles
+        PlayerProfile[] openProfiles = FindObjectsOfType<PlayerProfile>();
+        foreach (PlayerProfile profile in openProfiles)
+        {
+            if (profile.photonView.Owner == PhotonNetwork.LocalPlayer)
+            {
+                profile.UpdateAvailabilityStatus(currentStatus);
+            }
+        }
+    }
+
+    [PunRPC]
+    private void UpdateAvailabilityStatusRPC(int statusInt, int playerActorNumber) // Add playerActorNumber
+    {
+        // Find the PlayerController for the specified player
+        PlayerController[] players = FindObjectsOfType<PlayerController>();
+        foreach (PlayerController player in players)
+        {
+            if (player.view.OwnerActorNr == playerActorNumber)
+            {
+                AvailabilityManager.AvailabilityStatus status = (AvailabilityManager.AvailabilityStatus)statusInt;
+                player.SetAvailabilityStatus(status);
+                break; // Important: Exit the loop once the player is found
+            }
+        }
+    }
+
+    private void SaveStatus()
+    {
+        ExitGames.Client.Photon.Hashtable properties = new ExitGames.Client.Photon.Hashtable { { "AvailabilityStatus", (int)currentStatus } };
+        PhotonNetwork.LocalPlayer.SetCustomProperties(properties);
+    }
+
+    private void UpdateStatusVisuals()
+    {
+        Color statusColor;
+        string statusString;
+
+        switch (currentStatus)
+        {
+            case AvailabilityStatus.Available:
+                statusColor = availableColor;
+                statusString = "Available";
+                break;
+            case AvailabilityStatus.Busy:
+                statusColor = busyColor;
+                statusString = "Busy";
+                break;
+            case AvailabilityStatus.DoNotDisturb:
+                statusColor = doNotDisturbColor;
+                statusString = "Do Not Disturb";
+                break;
+            default:
+                statusColor = availableColor;
+                statusString = "Available";
+                break;
+        }
+
+        statusCircle.color = statusColor;
+        statusText.text = statusString;
+
+        // Update participant list
+        Participants participantsList = FindObjectOfType<Participants>();
+        if (participantsList != null)
+        {
+            participantsList.UpdateParticipantAvailability(PhotonNetwork.LocalPlayer, statusColor);
+        }
+    }
+
+
+    public override void OnPlayerPropertiesUpdate(Player targetPlayer, ExitGames.Client.Photon.Hashtable changedProps)
+    {
+        if (changedProps.ContainsKey("AvailabilityStatus") && targetPlayer == PhotonNetwork.LocalPlayer)
+        {
+            currentStatus = (AvailabilityStatus)changedProps["AvailabilityStatus"];
+            UpdateStatusVisuals();
+        }
+    }
+}
+
+
+--------------------------------------------------
+File: ButtonHoverEffect.cs
+Contents:
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+
+public class ButtonHoverEffect : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    public bool cursorHoverEffect = true;
+    public Image targetImage;
+    public float hoverDuration = 0.2f;
+
+    [Tooltip("Text to display when hovering over the button")]
+    public string tooltipText = "";
+
+    [Tooltip("If true, tooltip appears above the button; if false, below")]
+    public bool tooltipAbove = false;
+
+    [SerializeField] private GameObject tooltipPrefab;  // Assign your tooltip prefab here
+
+    private float currentAlpha = 0f;
+    private bool isHovering = false;
+    private GameObject tooltipInstance;
+    private RectTransform tooltipRect;
+    private TooltipResizer tooltipResizer;
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern void SetButtonHoverState(string gameObjectName, bool isHovering);
+
+    private void Awake()
+    {
+        if (targetImage != null)
+        {
+            // Set initial alpha to 0
+            Color initialColor = targetImage.color;
+            initialColor.a = 0f;
+            targetImage.color = initialColor;
+        }
+
+        // Create tooltip if text is provided
+        if (!string.IsNullOrEmpty(tooltipText) && tooltipPrefab != null)
+        {
+            CreateTooltip();
+        }
+    }
+
+    private void CreateTooltip()
+    {
+        // Instantiate tooltip prefab
+        tooltipInstance = Instantiate(tooltipPrefab, transform);
+        tooltipRect = tooltipInstance.GetComponent<RectTransform>();
+        tooltipResizer = tooltipInstance.GetComponent<TooltipResizer>();
+
+        if (tooltipResizer != null)
+        {
+            tooltipResizer.UpdateTooltipText(tooltipText);
+        }
+
+        PositionTooltip();
+        tooltipInstance.SetActive(false);
+    }
+
+    private void PositionTooltip()
+    {
+        if (tooltipRect == null) return;
+
+        // Position horizontally at center
+        tooltipRect.anchorMin = new Vector2(0.5f, tooltipAbove ? 1 : 0);
+        tooltipRect.anchorMax = new Vector2(0.5f, tooltipAbove ? 1 : 0);
+        tooltipRect.pivot = new Vector2(0.5f, tooltipAbove ? 0 : 1);
+
+        // Position vertically based on tooltipAbove setting
+        float spacing = 10f; // Space between button and tooltip
+        float verticalPosition = tooltipAbove ? spacing : -spacing;
+
+        tooltipRect.anchoredPosition = new Vector2(0, verticalPosition);
+    }
+
+    private void Update()
+    {
+        if (targetImage == null)
+        {
+            return;
+        }
+        if (isHovering && currentAlpha < 1f)
+        {
+            currentAlpha += Time.deltaTime / hoverDuration;
+        }
+        else if (!isHovering && currentAlpha > 0f)
+        {
+            currentAlpha -= Time.deltaTime / hoverDuration;
+        }
+        currentAlpha = Mathf.Clamp01(currentAlpha);
+        Color newColor = targetImage.color;
+        newColor.a = currentAlpha;
+        targetImage.color = newColor;
+    }
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (!cursorHoverEffect) return;
+        isHovering = true;
+        if (tooltipInstance != null)
+        {
+            tooltipInstance.SetActive(true);
+        }
+#if UNITY_WEBGL && !UNITY_EDITOR
+        SetButtonHoverState(gameObject.name, true);
+#endif
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        if (!cursorHoverEffect) return;
+        isHovering = false;
+        if (tooltipInstance != null)
+        {
+            tooltipInstance.SetActive(false);
+        }
+#if UNITY_WEBGL && !UNITY_EDITOR
+        SetButtonHoverState(gameObject.name, false);
+#endif
+    }
+}
+--------------------------------------------------
+File: EmojiButtonClickHandler.cs
+Contents:
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using System.Collections.Generic;
+using System.Collections;
+using UnityEngine.EventSystems;
+
+public class EmojiButtonClickHandler : MonoBehaviour
+{
+    public TMP_InputField inputField;
+    public TMP_InputField searchInputField;
+    public GameObject emojiContent;
+    public GameObject searchContent;
+    public GameObject[] objectsToDisableOnSearch;
+    public float hoverDuration = 0.2f;
+
+
+    private void Start()
+    {
+        // Cache the initial state of searchContent (disabled).
+        searchContent.SetActive(false);
+
+        searchInputField.onSelect.AddListener(OnSearchInputFieldSelect);
+        searchInputField.onDeselect.AddListener(OnSearchInputFieldDeselect);
+
+        // Add listeners for search input changes
+        searchInputField.onValueChanged.AddListener(OnSearchValueChanged);
+        searchInputField.onEndEdit.AddListener(OnSearchEndEdit);
+
+        // Add listeners to emoji buttons
+        Button[] emojiButtons = emojiContent.GetComponentsInChildren<Button>(true);
+        foreach (Button button in emojiButtons)
+        {
+            button.onClick.AddListener(() => HandleEmojiButtonClick(button));
+        }
+
+        // Add listeners to search result buttons (assuming they have the same structure)
+        Button[] searchButtons = searchContent.GetComponentsInChildren<Button>(true);
+        foreach (Button button in searchButtons)
+        {
+            button.onClick.AddListener(() => HandleEmojiButtonClick(button));
+        }
+    }
+
+    public void OnSearchInputFieldSelect(string text)
+    {
+        searchInputField.placeholder.gameObject.SetActive(false);
+
+        Debug.Log("Input field selected");
+    }
+
+    public void OnSearchInputFieldDeselect(string text)
+    {
+        Debug.Log("Input field deselected");
+
+        searchInputField.placeholder.gameObject.SetActive(true);
+    }
+
+    private void OnSearchValueChanged(string searchText)
+    {
+        if (string.IsNullOrEmpty(searchText))
+        {
+            // Restore original state
+            emojiContent.SetActive(true);
+            searchContent.SetActive(false);
+            foreach (GameObject obj in objectsToDisableOnSearch)
+            {
+                obj.SetActive(true);
+            }
+            return;
+        }
+
+        // Show search results and hide other elements
+        emojiContent.SetActive(false);
+        searchContent.SetActive(true);
+        foreach (GameObject obj in objectsToDisableOnSearch)
+        {
+            obj.SetActive(false);
+        }
+
+        Button[] buttons = searchContent.GetComponentsInChildren<Button>(true);
+        foreach (Button button in buttons)
+        {
+            bool matchesSearch = button.name.ToLower().Contains(searchText.ToLower());
+            StartCoroutine(SmoothSetActive(button.gameObject, matchesSearch));
+        }
+    }
+
+
+    private void OnSearchEndEdit(string searchText)
+    {
+        if (string.IsNullOrEmpty(searchText))
+        {
+            // Restore original state if search is empty after EndEdit
+            emojiContent.SetActive(true);
+            searchContent.SetActive(false);
+            foreach (GameObject obj in objectsToDisableOnSearch)
+            {
+                obj.SetActive(true);
+            }
+        }
+
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        {
+            Debug.Log("Enter key pressed!");
+            int currentCaretPosition = searchInputField.caretPosition;
+            EventSystem.current.SetSelectedGameObject(null);
+            EventSystem.current.SetSelectedGameObject(searchInputField.gameObject);
+
+            StartCoroutine(SetPosition());
+
+            IEnumerator SetPosition()
+            {
+                int width = searchInputField.caretWidth;
+                searchInputField.caretWidth = 0;
+
+                yield return new WaitForEndOfFrame();
+
+                searchInputField.caretWidth = width;
+                searchInputField.caretPosition = currentCaretPosition;
+            }
+        }
+    }
+
+    private void HandleEmojiButtonClick(Button button)
+    {
+        if (inputField == null)
+        {
+            Debug.LogError("InputField not assigned!");
+            return;
+        }
+
+        Transform emojiTransform = button.transform.Find("Emoji"); // Adjust path if needed
+        if (emojiTransform == null)
+        {
+            Debug.LogError("Emoji image not found under the button!");
+            return;
+        }
+
+        Image emojiImage = emojiTransform.GetComponent<Image>();
+        if (emojiImage == null || emojiImage.sprite == null)
+        {
+            Debug.LogError("Emoji image component or sprite is missing!");
+            return;
+        }
+
+        string spriteName = emojiImage.sprite.name;
+        inputField.text += $"<sprite name=\"{spriteName}\">";
+
+        // Close search after adding emoji
+        //searchInputField.text = "";
+        //OnSearchValueChanged(""); // Manually trigger to restore the original state
+        //searchInputField.DeactivateInputField(); // Remove focus from the search field
+    }
+
+
+    private IEnumerator SmoothSetActive(GameObject obj, bool active)
+    {
+        CanvasGroup canvasGroup = obj.GetComponent<CanvasGroup>();
+        if (canvasGroup == null)
+        {
+            canvasGroup = obj.AddComponent<CanvasGroup>();
+        }
+
+        float targetAlpha = active ? 1f : 0f;
+        float startAlpha = canvasGroup.alpha;
+        float elapsedTime = 0f;
+
+        while (elapsedTime < hoverDuration)
+        {
+            elapsedTime += Time.deltaTime;
+            float t = elapsedTime / hoverDuration;
+            canvasGroup.alpha = Mathf.Lerp(startAlpha, targetAlpha, t);
+            yield return null;
+        }
+
+        canvasGroup.alpha = targetAlpha;
+        obj.SetActive(active);
+    }
+}
+--------------------------------------------------
+File: EmojiChatButtonController.cs
+Contents:
+// EmojiButtonController.cs
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using TMPro;
+using System.Collections;
+using Photon.Pun;
+using System.IO;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEditor;
+
+public class EmojiChatButtonController : MonoBehaviourPunCallbacks
+{
+    private RectTransform mainButton;
+
+    [HideInInspector] public GameObject emojiSelectionWindow;
+    [HideInInspector] public bool isExpanded = false;
+    private const float animationDuration = 0.2f;
+    public TMP_InputField inputField;
+    public GameObject emojiSelectionWindowPrefab;
+
+    public delegate void EmojiWindowStateChanged(bool isOpen);
+    public static event EmojiWindowStateChanged OnEmojiWindowStateChanged;
+
+    private Coroutine animationCoroutine; // Coroutine variable to manage animation
+
+    void Start()
+    {
+        mainButton = GetComponent<RectTransform>();
+        mainButton.GetComponent<Button>().onClick.AddListener(ToggleEmojiPanel);
+    }
+
+    void ToggleEmojiPanel()
+    {
+        isExpanded = !isExpanded;
+
+        if (isExpanded)
+        {
+            if (emojiSelectionWindow == null)
+            {
+                emojiSelectionWindow = Instantiate(emojiSelectionWindowPrefab, mainCanvas.transform);
+                emojiSelectionWindow.transform.Find("Emoji List/Viewport/Content").GetComponent<EmojiButtonClickHandler>().inputField = inputField;
+                PositionEmojiWindow();
+
+            }
+            else
+            {
+                emojiSelectionWindow.SetActive(true); // Activate before animation
+            }
+
+            if (animationCoroutine != null)
+            {
+                StopCoroutine(animationCoroutine);
+            }
+            animationCoroutine = StartCoroutine(AnimateEmojiPanel(true));
+        }
+        else
+        {
+            if (animationCoroutine != null)
+            {
+                StopCoroutine(animationCoroutine);
+            }
+            animationCoroutine = StartCoroutine(AnimateEmojiPanel(false));
+
+
+        }
+        // Raise the event
+        OnEmojiWindowStateChanged?.Invoke(isExpanded);
+    }
+
+    private Canvas mainCanvas
+    {
+        get
+        {
+            if (_mainCanvas == null)
+            {
+                _mainCanvas = GameObject.Find("ControlsCanvas").GetComponent<Canvas>();
+                if (_mainCanvas == null)
+                {
+                    Debug.LogError("No Canvas found in the scene!");
+                }
+            }
+            return _mainCanvas;
+        }
+    }
+    private Canvas _mainCanvas;
+
+    private void PositionEmojiWindow()
+    {
+        RectTransform windowRect = emojiSelectionWindow.GetComponent<RectTransform>();
+        RectTransform canvasRect = mainCanvas.GetComponent<RectTransform>();
+
+        // Set anchor and pivot
+        windowRect.anchorMin = new Vector2(0.5f, 0.5f);
+        windowRect.anchorMax = new Vector2(0.5f, 0.5f);
+        windowRect.pivot = new Vector2(0.5f, 0.5f);
+
+        // Get the world position of the main button
+        Vector3 buttonWorldPos = mainButton.transform.position;
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, buttonWorldPos, null, out Vector2 localButtonPoint);
+
+        // Calculate the available space above and below the button
+        float spaceAbove = canvasRect.rect.height / 2 - localButtonPoint.y - mainButton.rect.height / 2;
+        float spaceBelow = canvasRect.rect.height / 2 + localButtonPoint.y - mainButton.rect.height / 2;
+
+        // Determine whether to place the window above or below the button
+        bool placeAbove = spaceAbove >= windowRect.rect.height || (spaceAbove > spaceBelow && spaceBelow < windowRect.rect.height);
+
+        // Calculate Y position
+        float yOffset = 0; // Adjust this value as needed
+        float yPosition;
+        if (placeAbove)
+        {
+            yPosition = localButtonPoint.y + mainButton.rect.height / 2 + windowRect.rect.height / 2 + yOffset + 50;
+        }
+        else
+        {
+            yPosition = localButtonPoint.y - mainButton.rect.height / 2 - windowRect.rect.height / 2 - yOffset;
+        }
+
+        // Adjust X position to fit within screen width
+        float xPosition = localButtonPoint.x;
+        float halfWindowWidth = windowRect.rect.width / 2;
+        float leftEdge = -canvasRect.rect.width / 2;
+        float rightEdge = canvasRect.rect.width / 2;
+
+        if (xPosition - halfWindowWidth < leftEdge)
+        {
+            xPosition = leftEdge + halfWindowWidth;
+        }
+        else if (xPosition + halfWindowWidth > rightEdge)
+        {
+            xPosition = rightEdge - halfWindowWidth;
+        }
+
+        // Adjust Y position if it goes beyond screen edges
+        float topEdge = canvasRect.rect.height / 2;
+        float bottomEdge = -canvasRect.rect.height / 2;
+
+        if (yPosition + windowRect.rect.height / 2 > topEdge)
+        {
+            yPosition = topEdge - windowRect.rect.height / 2;
+        }
+        else if (yPosition - windowRect.rect.height / 2 < bottomEdge)
+        {
+            yPosition = bottomEdge + windowRect.rect.height / 2;
+        }
+
+        // Set the final position
+        windowRect.anchoredPosition = new Vector2(xPosition, yPosition);
+    }
+
+    IEnumerator AnimateEmojiPanel(bool open)
+    {
+
+        CanvasGroup canvasGroup = emojiSelectionWindow.GetComponent<CanvasGroup>();
+        float startAlpha = open ? 0 : 1;
+        float endAlpha = open ? 1 : 0;
+        float elapsedTime = 0;
+
+
+        while (elapsedTime < animationDuration)
+        {
+            elapsedTime += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsedTime / animationDuration);
+            t = t * t * (3f - 2f * t); // Smoothstep easing
+
+            canvasGroup.alpha = Mathf.Lerp(startAlpha, endAlpha, t);
+
+            yield return null;
+        }
+
+        canvasGroup.alpha = endAlpha;
+
+        if (!open)
+        {
+            emojiSelectionWindow.SetActive(false); // Deactivate after animation completes
+        }
+
+        animationCoroutine = null; // Reset coroutine variable
+    }
+
+    private void Update()
+    {
+        if (emojiSelectionWindow != null && emojiSelectionWindow.activeSelf && Input.GetMouseButtonDown(0))
+        {
+            if (!RectTransformUtility.RectangleContainsScreenPoint(emojiSelectionWindow.GetComponent<RectTransform>(), Input.mousePosition, null))
+            {
+                ToggleEmojiPanel();
+            }
+        }
+    }
+}
+--------------------------------------------------
+File: InputFieldHoverEffect.cs
+Contents:
+using UnityEngine;
+using UnityEngine.EventSystems;
+using TMPro;
+using UnityEngine.UI;
+using System.Collections;
+
+public class InputFieldHoverEffect : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    public Image FrameImage;
+    public float hoverDuration = 0.2f;
+
+    private TMP_InputField inputField;
+    private Color FrameOriginalColor;
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern void SetInputFieldHoverState(string gameObjectName, bool isHovering);
+
+    private void Awake()
+    {
+        inputField = GetComponent<TMP_InputField>();
+        if (inputField == null)
+        {
+            Debug.LogError("InputFieldHoverEffect requires a TMP_InputField component on the same GameObject.");
+        }
+
+        if (FrameImage != null)
+        {
+            // Setup search frame hover effect
+            FrameOriginalColor = FrameImage.color;
+            EventTrigger trigger = FrameImage.gameObject.AddComponent<EventTrigger>();
+
+            EventTrigger.Entry enterEntry = new EventTrigger.Entry();
+            enterEntry.eventID = EventTriggerType.PointerEnter;
+            enterEntry.callback.AddListener((data) => { OnFrameHover(true); });
+            trigger.triggers.Add(enterEntry);
+
+            EventTrigger.Entry exitEntry = new EventTrigger.Entry();
+            exitEntry.eventID = EventTriggerType.PointerExit;
+            exitEntry.callback.AddListener((data) => { OnFrameHover(false); });
+            trigger.triggers.Add(exitEntry);
+        }
+    }
+
+    private void OnFrameHover(bool isHovering)
+    {
+        StartCoroutine(SmoothColorChange(FrameImage, isHovering ? Color.white : FrameOriginalColor));
+    }
+
+    private IEnumerator SmoothColorChange(Image image, Color targetColor)
+    {
+        Color startColor = image.color;
+        float elapsedTime = 0f;
+
+        while (elapsedTime < hoverDuration)
+        {
+            elapsedTime += Time.deltaTime;
+            float t = elapsedTime / hoverDuration;
+            image.color = Color.Lerp(startColor, targetColor, t);
+            yield return null;
+        }
+
+        image.color = targetColor;
+    }
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        SetInputFieldHoverState(gameObject.name, true);
+#endif
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        SetInputFieldHoverState(gameObject.name, false);
+#endif
+    }
+}
+
+--------------------------------------------------
+File: Participants.cs
+Contents:
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+using Photon.Pun;
+using Photon.Realtime;
+using TMPro;
+
+public class Participants : MonoBehaviourPunCallbacks
+{
+    [HideInInspector]
+    public static Participants Instance;
+
+    public float hoverDuration = 0.2f;
+    public RectTransform menuPanel;
+    public float slideDuration = 0.5f;
+    public float slideDistance = 400f;
+    public Button toggleButton;
+    public Button closeButton;
+    public GameObject participantPrefab;
+    public Transform participantListContent;
+    public Sprite[] avatarSprites;
+    public TMP_InputField searchInputField;
+    //public Image searchFrameImage;
+
+    private float currentAlpha = 0f;
+    private bool isHovering = false;
+    [HideInInspector]
+    public bool isOpen = false;
+    private bool isAnimating = false;
+    private Dictionary<int, GameObject> participantObjects = new Dictionary<int, GameObject>();
+    //private Color searchFrameOriginalColor;
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern void SetButtonHoverState(string gameObjectName, bool isHovering);
+
+    // Add these new fields to the Participants class
+    public GameObject mainPlayerProfilePrefab;
+    public GameObject otherPlayerProfilePrefab;
+    private PlayerProfile currentProfile;
+
+    public float profileWindowWidth = 400f;
+    public Canvas mainCanvas;
+
+    public TextMeshProUGUI participantsNumberText;
+
+    private void Start()
+    {
+        Instance = this;
+
+        toggleButton.onClick.AddListener(ToggleMenu);
+
+        searchInputField.onSelect.AddListener(OnSearchInputFieldSelect);
+        searchInputField.onDeselect.AddListener(OnSearchInputFieldDeselect);
+
+        menuPanel.anchoredPosition = menuPanel.anchoredPosition + new Vector2(slideDistance, 0);
+
+        // Initialize the participant list
+        UpdateParticipantList();
+
+        // Setup search functionality
+        searchInputField.onValueChanged.AddListener(OnSearchValueChanged);
+        searchInputField.onEndEdit.AddListener(OnSearchEndEdit);
+
+        // Initialize the participant number
+        UpdateParticipantsNumber();
+    }
+
+    private void Update()
+    {
+
+        if (Input.GetMouseButtonDown(0) && currentProfile != null)
+        {
+            Vector2 mousePosition = Input.mousePosition;
+            bool clickedOutside = !RectTransformUtility.RectangleContainsScreenPoint(currentProfile.GetComponent<RectTransform>(), mousePosition, null);
+
+            // Check if the click is on the menu panel
+            bool clickedOnMenuPanel = RectTransformUtility.RectangleContainsScreenPoint(menuPanel, mousePosition, null);
+
+            bool clickedOutsideEmoji = true;
+            if (currentProfile.gameObject.name == "Main Player Profile(Clone)")
+            {
+                if (currentProfile.transform.Find("Status Bar/Icon").GetComponent<EmojiChatButtonController>().isExpanded) 
+                {
+                    clickedOutsideEmoji = !RectTransformUtility.RectangleContainsScreenPoint(currentProfile.transform.Find("Status Bar/Icon").GetComponent<EmojiChatButtonController>().emojiSelectionWindow.GetComponent<RectTransform>(), mousePosition, null);
+                }
+            }
+            else if(currentProfile.gameObject.name == "Other Player Profile(Clone)")
+            {
+                if (currentProfile.transform.Find("Message Bar/Icon").GetComponent<EmojiChatButtonController>().isExpanded)
+                {
+                    clickedOutsideEmoji = !RectTransformUtility.RectangleContainsScreenPoint(currentProfile.transform.Find("Message Bar/Icon").GetComponent<EmojiChatButtonController>().emojiSelectionWindow.GetComponent<RectTransform>(), mousePosition, null);
+
+                }
+            } 
+
+            if (clickedOutside && clickedOutsideEmoji)
+            {
+                CloseCurrentProfile();
+            }
+        }
+    }
+
+    private void CloseCurrentProfile()
+    {
+        if (currentProfile != null)
+        {
+            // Find the participant associated with the current profile
+            foreach (var participantObj in participantObjects.Values)
+            {
+                ParticipantHoverEffect hoverEffect = participantObj.GetComponent<ParticipantHoverEffect>();
+                if (hoverEffect != null)
+                {
+                    hoverEffect.SetProfileOpen(false);
+                }
+            }
+
+            currentProfile.Hide();
+            currentProfile = null;
+        }
+    }
+
+    private void ShowProfile(Player player, RectTransform participantRect)
+    {
+        // Close the current profile if it exists
+        CloseCurrentProfile();
+
+        // Determine if this is the main player
+        bool isMainPlayer = player == PhotonNetwork.LocalPlayer;
+
+        // Instantiate the appropriate prefab
+        GameObject profilePrefab = isMainPlayer ? mainPlayerProfilePrefab : otherPlayerProfilePrefab;
+        GameObject profileObject = PhotonNetwork.Instantiate(profilePrefab.name, Vector3.zero, Quaternion.identity);
+        profileObject.transform.SetParent(mainCanvas.transform, false);
+        profileObject.SetActive(true);
+
+        // Setup the profile
+        PlayerProfile profile = profileObject.GetComponent<PlayerProfile>();
+        profile.SetProfilePlayer(player);
+        int avatarIndex = isMainPlayer ? PlayerDataManager.PlayerAvatar : (int)player.CustomProperties["avatar"];
+        profile.SetupProfile(avatarSprites[avatarIndex], player.NickName, isMainPlayer);
+
+        // Update the availability status
+        if (player.CustomProperties.TryGetValue("AvailabilityStatus", out object status))
+        {
+            profile.UpdateAvailabilityStatus((AvailabilityManager.AvailabilityStatus)status);
+        }
+
+        // Position the profile
+        RectTransform profileRect = profileObject.GetComponent<RectTransform>();
+        profileRect.anchorMin = new Vector2(1, 0.5f);
+        profileRect.anchorMax = new Vector2(1, 0.5f);
+        profileRect.pivot = new Vector2(1, 0.5f);
+
+        // Calculate the position next to the participant
+        Canvas.ForceUpdateCanvases();
+
+        Vector3 participantWorldPos = participantRect.transform.position;
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(mainCanvas.GetComponent<RectTransform>(), participantWorldPos, null, out Vector2 localPoint);
+
+        float xOffset = profileWindowWidth + 10;
+        float canvasHeight = mainCanvas.GetComponent<RectTransform>().rect.height;
+        float yPosition = Mathf.Clamp(localPoint.y, profileRect.rect.height / 2 - canvasHeight / 2, canvasHeight / 2 - profileRect.rect.height / 2);
+
+        profileRect.anchoredPosition = new Vector2(-xOffset, yPosition);
+
+        // Show the profile
+        profile.Show();
+
+        // Set as current profile
+        currentProfile = profile;
+
+        // Set the profile open state for the participant
+        ParticipantHoverEffect hoverEffect = participantRect.GetComponent<ParticipantHoverEffect>();
+        if (hoverEffect != null)
+        {
+            hoverEffect.SetProfileOpen(true);
+        }
+    }
+
+    public void ToggleMenu()
+    {
+        if (!isOpen)
+        {
+            GetComponent<ButtonHoverEffect>().enabled = false;
+            GetComponent<ButtonHoverEffect>().targetImage.color = new Color (GetComponent<ButtonHoverEffect>().targetImage.color.r , GetComponent<ButtonHoverEffect>().targetImage.color.g, GetComponent<ButtonHoverEffect>().targetImage.color.b, 100f);
+
+            // Close participants menu if open
+            PrivateChat privateMenu = PrivateChat.Instance;
+            if (privateMenu != null && privateMenu.isOpen)
+            {
+                privateMenu.ToggleMenu();
+            }
+        }
+        else
+        {
+            GetComponent<ButtonHoverEffect>().enabled = true;
+        }
+
+        if (!isAnimating)
+        {
+            CloseCurrentProfile();
+            StartCoroutine(SlideMenu(!isOpen));
+        }
+    }
+
+    private IEnumerator SlideMenu(bool open)
+    {
+        isAnimating = true;
+        toggleButton.interactable = false;
+        closeButton.interactable = false;
+
+        float elapsedTime = 0f;
+        Vector2 startPosition = menuPanel.anchoredPosition;
+        Vector2 endPosition = open ? startPosition - new Vector2(slideDistance, 0) : startPosition + new Vector2(slideDistance, 0);
+
+        while (elapsedTime < slideDuration)
+        {
+            elapsedTime += Time.deltaTime;
+            float t = Mathf.SmoothStep(0, 1, elapsedTime / slideDuration);
+            menuPanel.anchoredPosition = Vector2.Lerp(startPosition, endPosition, t);
+            yield return null;
+        }
+
+        menuPanel.anchoredPosition = endPosition;
+        isOpen = open;
+        isAnimating = false;
+        toggleButton.interactable = true;
+        closeButton.interactable = true;
+    }
+
+    public void UpdateParticipantList()
+    {
+        // Store current availability statuses
+        Dictionary<int, Color> currentAvailabilityStatuses = new Dictionary<int, Color>();
+        foreach (var kvp in participantObjects)
+        {
+            Image statusCircle = kvp.Value.transform.Find("Avatar/Status Circle/Status Circle").GetComponent<Image>();
+            currentAvailabilityStatuses[kvp.Key] = statusCircle.color;
+        }
+
+        // Clear existing participant objects
+        foreach (var obj in participantObjects.Values)
+        {
+            Destroy(obj);
+        }
+        participantObjects.Clear();
+
+        // Add other players first
+        foreach (Player player in PhotonNetwork.PlayerList)
+        {
+            if (player != PhotonNetwork.LocalPlayer)
+            {
+                AddParticipant(player, false);
+            }
+        }
+
+        // Add local player last
+        AddParticipant(PhotonNetwork.LocalPlayer, true);
+
+        // Restore availability statuses
+        foreach (var kvp in currentAvailabilityStatuses)
+        {
+            if (participantObjects.TryGetValue(kvp.Key, out GameObject participantObj))
+            {
+                Image statusCircle = participantObj.transform.Find("Avatar/Status Circle/Status Circle").GetComponent<Image>();
+                statusCircle.color = kvp.Value;
+            }
+        }
+
+        // Apply search filter
+        OnSearchValueChanged(searchInputField.text);
+    }
+
+    private void AddParticipant(Player player, bool isLocalPlayer)
+    {
+        GameObject participantObj = Instantiate(participantPrefab, participantListContent);
+
+        // Set avatar
+        Image avatarImage = participantObj.transform.Find("Avatar").GetComponent<Image>();
+        int avatarIndex = isLocalPlayer ? PlayerDataManager.PlayerAvatar : (int)player.CustomProperties["avatar"];
+        avatarImage.sprite = avatarSprites[avatarIndex];
+
+        // Set name
+        TextMeshProUGUI nameText = participantObj.transform.Find("Name").GetComponent<TextMeshProUGUI>();
+        string playerName = player.NickName;
+        nameText.text = playerName + (isLocalPlayer ? " (you)" : "");
+
+        // Set status
+        TextMeshProUGUI statusText = participantObj.transform.Find("Status").GetComponent<TextMeshProUGUI>();
+        UpdateParticipantStatus(player, statusText);
+
+        // Set availability status
+        if (player.CustomProperties.TryGetValue("AvailabilityStatus", out object availabilityStatus))
+        {
+            AvailabilityManager.AvailabilityStatus status = (AvailabilityManager.AvailabilityStatus)availabilityStatus;
+            Color statusColor = GetStatusColor(status);
+            Image statusCircle = participantObj.transform.Find("Avatar/Status Circle/Status Circle").GetComponent<Image>();
+            statusCircle.color = statusColor;
+        }
+
+        // Add hover effect to participant object
+        Image backgroundImage = participantObj.GetComponent<Image>();
+        if (backgroundImage != null)
+        {
+            ParticipantHoverEffect hoverEffect = participantObj.AddComponent<ParticipantHoverEffect>();
+            hoverEffect.targetImage = backgroundImage;
+            hoverEffect.hoverDuration = hoverDuration;
+        }
+
+        // Add click listener
+        Button participantButton = participantObj.GetComponent<Button>();
+        if (participantButton == null)
+        {
+            participantButton = participantObj.AddComponent<Button>();
+        }
+        RectTransform participantRect = participantObj.GetComponent<RectTransform>();
+        participantButton.onClick.AddListener(() => ShowProfile(player, participantRect));
+
+        // Store the participant object
+        participantObjects[player.ActorNumber] = participantObj;
+
+        // Set the sibling index to ensure local player is last
+        if (isLocalPlayer)
+        {
+            participantObj.transform.SetAsLastSibling();
+        }
+    }
+
+    private void UpdateParticipantStatus(Player player, TextMeshProUGUI statusText)
+    {
+        if (player.CustomProperties.TryGetValue("PlayerStatus", out object statusObj))
+        {
+            statusText.text = statusObj.ToString();
+        }
+        else
+        {
+            statusText.text = "";
+        }
+    }
+
+    public void UpdateParticipantAvailability(Player player, Color statusColor)
+    {
+        if (participantObjects.TryGetValue(player.ActorNumber, out GameObject participantObj))
+        {
+            Image statusCircle = participantObj.transform.Find("Avatar/Status Circle/Status Circle").GetComponent<Image>();
+            statusCircle.color = statusColor;
+        }
+    }
+    private void UpdateParticipantCustomStatus(Player player, string customStatus)
+    {
+        if (participantObjects.TryGetValue(player.ActorNumber, out GameObject participantObj))
+        {
+            TextMeshProUGUI statusText = participantObj.transform.Find("Status").GetComponent<TextMeshProUGUI>();
+            statusText.text = customStatus;
+        }
+    }
+    public void UpdateParticipantStatus(Player player, string status, Color statusColor)
+    {
+        if (participantObjects.TryGetValue(player.ActorNumber, out GameObject participantObj))
+        {
+            Image statusCircle = participantObj.transform.Find("Avatar/Status Circle/Status Circle").GetComponent<Image>();
+            TextMeshProUGUI statusText = participantObj.transform.Find("Status").GetComponent<TextMeshProUGUI>();
+
+            statusCircle.color = statusColor;
+            statusText.text = status;
+        }
+    }
+
+    public override void OnPlayerPropertiesUpdate(Player targetPlayer, ExitGames.Client.Photon.Hashtable changedProps)
+    {
+        base.OnPlayerPropertiesUpdate(targetPlayer, changedProps);
+
+        if (changedProps.ContainsKey("AvailabilityStatus"))
+        {
+            int statusValue = (int)changedProps["AvailabilityStatus"];
+            AvailabilityManager.AvailabilityStatus status = (AvailabilityManager.AvailabilityStatus)statusValue;
+            Color statusColor = GetStatusColor(status);
+
+            UpdateParticipantAvailability(targetPlayer, statusColor);
+        }
+
+        if (changedProps.ContainsKey("PlayerStatus"))
+        {
+            string customStatus = changedProps["PlayerStatus"] as string;
+            UpdateParticipantCustomStatus(targetPlayer, customStatus);
+        }
+    }
+
+    public Color GetStatusColor(AvailabilityManager.AvailabilityStatus status)
+    {
+        switch (status)
+        {
+            case AvailabilityManager.AvailabilityStatus.Available:
+                return Color.green;
+            case AvailabilityManager.AvailabilityStatus.Busy:
+                return Color.yellow;
+            case AvailabilityManager.AvailabilityStatus.DoNotDisturb:
+                return Color.red;
+            default:
+                return Color.green;
+        }
+    }
+
+    private string GetStatusString(AvailabilityManager.AvailabilityStatus status)
+    {
+        switch (status)
+        {
+            case AvailabilityManager.AvailabilityStatus.Available:
+                return "Available";
+            case AvailabilityManager.AvailabilityStatus.Busy:
+                return "Busy";
+            case AvailabilityManager.AvailabilityStatus.DoNotDisturb:
+                return "Do Not Disturb";
+            default:
+                return "Available";
+        }
+    }
+
+    public override void OnPlayerEnteredRoom(Player newPlayer)
+    {
+        AddParticipant(newPlayer, false);
+        EnsureLocalPlayerLast();
+        OnSearchValueChanged(searchInputField.text);
+        UpdateParticipantsNumber();
+    }
+
+    public override void OnPlayerLeftRoom(Player otherPlayer)
+    {
+        if (participantObjects.TryGetValue(otherPlayer.ActorNumber, out GameObject obj))
+        {
+            Destroy(obj);
+            participantObjects.Remove(otherPlayer.ActorNumber);
+        }
+        OnSearchValueChanged(searchInputField.text);
+        UpdateParticipantsNumber();
+    }
+
+    private void UpdateParticipantsNumber()
+    {
+        if (participantsNumberText != null)
+        {
+            participantsNumberText.text = PhotonNetwork.CurrentRoom.PlayerCount.ToString();
+        }
+    }
+
+    private void EnsureLocalPlayerLast()
+    {
+        if (participantObjects.TryGetValue(PhotonNetwork.LocalPlayer.ActorNumber, out GameObject localPlayerObj))
+        {
+            localPlayerObj.transform.SetAsLastSibling();
+        }
+    }
+
+    private void OnSearchValueChanged(string searchText)
+    {
+        searchText = searchText.ToLower();
+        foreach (var participantObj in participantObjects.Values)
+        {
+            TextMeshProUGUI nameText = participantObj.transform.Find("Name").GetComponent<TextMeshProUGUI>();
+            bool matchesSearch = nameText.text.ToLower().Contains(searchText);
+            StartCoroutine(SmoothSetActive(participantObj, matchesSearch));
+        }
+    }
+
+    private void OnSearchEndEdit(string searchText)
+    {
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        {
+            Debug.Log("Enter key pressed!");
+            int currentCaretPosition = searchInputField.caretPosition;
+            EventSystem.current.SetSelectedGameObject(null);
+            EventSystem.current.SetSelectedGameObject(searchInputField.gameObject);
+
+            StartCoroutine(SetPosition());
+
+            IEnumerator SetPosition()
+            {
+                int width = searchInputField.caretWidth;
+                searchInputField.caretWidth = 0;
+
+                yield return new WaitForEndOfFrame();
+
+                searchInputField.caretWidth = width;
+                searchInputField.caretPosition = currentCaretPosition;
+            }
+        }
+    }
+
+    private IEnumerator SmoothSetActive(GameObject obj, bool active)
+    {
+        if (obj == null) yield break;
+
+        CanvasGroup canvasGroup = obj.GetComponent<CanvasGroup>();
+        if (canvasGroup == null)
+        {
+            canvasGroup = obj.AddComponent<CanvasGroup>();
+        }
+
+        float targetAlpha = active ? 1f : 0f;
+        float startAlpha = canvasGroup.alpha;
+        float elapsedTime = 0f;
+
+        while (elapsedTime < hoverDuration && canvasGroup != null)
+        {
+            elapsedTime += Time.deltaTime;
+            float t = elapsedTime / hoverDuration;
+            if (canvasGroup != null)
+            {
+                canvasGroup.alpha = Mathf.Lerp(startAlpha, targetAlpha, t);
+            }
+            yield return null;
+        }
+
+        if (canvasGroup != null)
+        {
+            canvasGroup.alpha = targetAlpha;
+            obj.SetActive(active);
+        }
+    }
+
+    public void OnSearchInputFieldSelect(string text)
+    {
+        searchInputField.placeholder.gameObject.SetActive(false);
+
+        Debug.Log("Input field selected");
+    }
+
+    public void OnSearchInputFieldDeselect(string text)
+    {
+        Debug.Log("Input field deselected");
+
+        searchInputField.placeholder.gameObject.SetActive(true);
+    }
+}
+
+// New class for participant hover effect
+public class ParticipantHoverEffect : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    public Image targetImage;
+    public float hoverDuration = 0.2f;
+
+    private float currentAlpha = 0f;
+    private bool isHovering = false;
+
+    [System.Runtime.InteropServices.DllImport("__Internal")]
+    private static extern void SetButtonHoverState(string gameObjectName, bool isHovering);
+
+    private bool isProfileOpen = false;
+
+    public void SetProfileOpen(bool open)
+    {
+        isProfileOpen = open;
+        if (open)
+        {
+            currentAlpha = 1f;
+        }
+        else
+        {
+            currentAlpha = isHovering ? 1f : 0f;
+        }
+        UpdateImageAlpha();
+    }
+
+    private void Update()
+    {
+        if (!isProfileOpen)
+        {
+            if (isHovering && currentAlpha < 1f)
+            {
+                currentAlpha += Time.deltaTime / hoverDuration;
+            }
+            else if (!isHovering && currentAlpha > 0f)
+            {
+                currentAlpha -= Time.deltaTime / hoverDuration;
+            }
+
+            currentAlpha = Mathf.Clamp01(currentAlpha);
+            UpdateImageAlpha();
+        }
+    }
+
+    private void UpdateImageAlpha()
+    {
+        Color newColor = targetImage.color;
+        newColor.a = currentAlpha;
+        targetImage.color = newColor;
+    }
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        isHovering = true;
+#if UNITY_WEBGL && !UNITY_EDITOR
+        SetButtonHoverState(gameObject.name, true);
+#endif
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        isHovering = false;
+#if UNITY_WEBGL && !UNITY_EDITOR
+        SetButtonHoverState(gameObject.name, false);
+#endif
+    }
+}
+--------------------------------------------------
+File: PrivateChat.cs
+Contents:
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using Photon.Pun;
+using Photon.Realtime;
+using UnityEngine.EventSystems;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+
+public class PrivateChat : MonoBehaviourPunCallbacks
+{
+    public static PrivateChat Instance;
+
+    [Header("Main UI Elements")]
+    public RectTransform menuPanel;
+    public float slideDuration = 0.5f;
+    public float slideDistance = 400f;
+    public Button toggleButton;
+    public GameObject chatListContent;
+    public GameObject chatWindowContent;
+    public GameObject newChatContent;
+
+    [Header("Chat Window UI Elements")]
+    public TextMeshProUGUI chatWindowTitle;
+    public Image chatWindowAvatar;
+    public Transform messageListContent;
+    public GameObject messagePrefab;
+    public GameObject dateSeparatorPrefab;
+    public TMP_InputField messageInput;
+    public Button chatBackButton;
+    public Button chatCloseButton;
+
+    [Header("Chat List UI Elements")]
+    public Transform chatListTransform;
+    public GameObject chatListItemPrefab;
+    public Button chatListCloseButton;
+    public Button newChatButton;
+
+    [Header("New Chat Window")]
+    public TMP_InputField newChatSearchInput;
+    public Transform newChatParticipantListContent;
+    public GameObject newChatParticipantPrefab;
+    public Button createChatButton;
+    public Button newChatBackButton;
+
+    private List<Player> selectedParticipants = new List<Player>();
+    private Dictionary<int, GameObject> participantObjects = new Dictionary<int, GameObject>();
+
+    [HideInInspector]
+    public bool isOpen = false;
+    private Dictionary<string, List<ChatMessage>> chatHistory = new Dictionary<string, List<ChatMessage>>();
+    private Dictionary<string, Player> emptyChatPartners = new Dictionary<string, Player>();
+
+    private Player currentChatPartner;
+
+    private readonly Regex urlRegex = new Regex(@"(http|https):\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?", RegexOptions.Compiled);
+    private Dictionary<string, string> linkDictionary = new Dictionary<string, string>();
+
+    [DllImport("__Internal")]
+    private static extern void SetLinkHoverState(string gameObjectName, bool isHovering);
+
+    private void Awake()
+    {
+        Instance = this;
+    }
+
+    private void Start()
+    {
+        menuPanel.anchoredPosition = menuPanel.anchoredPosition + new Vector2(slideDistance, 0);
+
+        toggleButton.onClick.AddListener(ToggleMenu);
+        chatCloseButton.onClick.AddListener(CloseMenu);
+        chatListCloseButton.onClick.AddListener(CloseMenu);
+        newChatButton.onClick.AddListener(ShowNewChatWindow);
+        chatBackButton.onClick.AddListener(ShowChatList);
+        newChatBackButton.onClick.AddListener(ShowChatList);
+        createChatButton.onClick.AddListener(CreateNewChats);
+
+        newChatSearchInput.onValueChanged.AddListener(OnNewChatSearchValueChanged);
+        newChatSearchInput.onEndEdit.AddListener(OnNewChatEndEdit);
+        newChatSearchInput.onSelect.AddListener(OnSearchInputFieldSelect);
+        newChatSearchInput.onDeselect.AddListener(OnSearchInputFieldDeselect);
+
+        messageInput.onEndEdit.AddListener(OnMessageInputEndEdit);
+        messageInput.onSelect.AddListener(OnChatInputFieldSelect);
+        messageInput.onDeselect.AddListener(OnChatInputFieldDeselect);
+
+        menuPanel.gameObject.SetActive(false);
+        chatListContent.SetActive(true);
+        chatWindowContent.SetActive(false);
+        newChatContent.SetActive(false);
+        createChatButton.gameObject.SetActive(false);
+    }
+
+    public void ToggleMenu()
+    {
+        if (!isOpen)
+        {
+            OpenMenu();
+        }
+        else
+        {
+            CloseMenu();
+        }
+    }
+
+    public void OpenMenu()
+    {
+        GetComponent<ButtonHoverEffect>().enabled = false;
+        GetComponent<ButtonHoverEffect>().targetImage.color = new Color(GetComponent<ButtonHoverEffect>().targetImage.color.r, GetComponent<ButtonHoverEffect>().targetImage.color.g, GetComponent<ButtonHoverEffect>().targetImage.color.b, 100f);
+
+        Participants participantsMenu = Participants.Instance;
+        if (participantsMenu != null && participantsMenu.isOpen)
+        {
+            participantsMenu.ToggleMenu();
+        }
+
+        menuPanel.gameObject.SetActive(true);
+        StartCoroutine(SlideMenu(true));
+        isOpen = true;
+        UpdateChatList();
+    }
+
+    public void CloseMenu()
+    {
+        GetComponent<ButtonHoverEffect>().enabled = true;
+
+        StartCoroutine(SlideMenu(false));
+        isOpen = false;
+    }
+
+    private IEnumerator SlideMenu(bool open)
+    {
+        toggleButton.interactable = false;
+        chatCloseButton.interactable = false;
+        chatListCloseButton.interactable = false;
+
+        float elapsedTime = 0f;
+        Vector2 startPosition = menuPanel.anchoredPosition;
+        Vector2 endPosition = open ? startPosition - new Vector2(slideDistance, 0) : startPosition + new Vector2(slideDistance, 0);
+
+        while (elapsedTime < slideDuration)
+        {
+            elapsedTime += Time.deltaTime;
+            float t = Mathf.SmoothStep(0, 1, elapsedTime / slideDuration);
+            menuPanel.anchoredPosition = Vector2.Lerp(startPosition, endPosition, t);
+            yield return null;
+        }
+
+        menuPanel.anchoredPosition = endPosition;
+
+        if (!open)
+        {
+            menuPanel.gameObject.SetActive(false);
+        }
+
+        toggleButton.interactable = true;
+        chatCloseButton.interactable = true;
+        chatListCloseButton.interactable = true;
+    }
+
+    private void ShowNewChatWindow()
+    {
+        chatListContent.SetActive(false);
+        newChatContent.SetActive(true);
+        createChatButton.gameObject.SetActive(false);
+        newChatSearchInput.text = "";
+        PopulateNewChatParticipantList();
+    }
+
+    private void PopulateNewChatParticipantList()
+    {
+        foreach (Transform child in newChatParticipantListContent)
+        {
+            Destroy(child.gameObject);
+        }
+        participantObjects.Clear();
+        selectedParticipants.Clear();
+
+        foreach (Player player in PhotonNetwork.PlayerList)
+        {
+            if (player != PhotonNetwork.LocalPlayer && !ChatExistsWithPlayer(player)) // Check if chat already exists
+            {
+                GameObject participantObj = Instantiate(newChatParticipantPrefab, newChatParticipantListContent);
+                SetupNewChatParticipantObject(participantObj, player);
+                participantObjects[player.ActorNumber] = participantObj;
+            }
+        }
+    }
+
+    private void SetupNewChatParticipantObject(GameObject participantObj, Player player)
+    {
+        Image avatarImage = participantObj.transform.Find("Avatar").GetComponent<Image>();
+        TextMeshProUGUI nameText = participantObj.transform.Find("Name").GetComponent<TextMeshProUGUI>();
+        Image statusCircle = participantObj.transform.Find("Avatar/Status Circle/Status Circle").GetComponent<Image>();
+        Toggle selectionToggle = participantObj.GetComponentInChildren<Toggle>();
+
+        if (player.CustomProperties.TryGetValue("avatar", out object avatarObj) && avatarObj is int avatarIndex)
+        {
+            avatarImage.sprite = Participants.Instance.avatarSprites[avatarIndex];
+        }
+
+        nameText.text = player.NickName;
+
+        if (player.CustomProperties.TryGetValue("AvailabilityStatus", out object availabilityStatus))
+        {
+            AvailabilityManager.AvailabilityStatus status = (AvailabilityManager.AvailabilityStatus)availabilityStatus;
+            Color statusColor = Participants.Instance.GetStatusColor(status);
+            statusCircle.color = statusColor;
+        }
+
+        selectionToggle.onValueChanged.AddListener((isOn) => OnNewChatParticipantSelected(player, isOn));
+    }
+
+    private void OnNewChatParticipantSelected(Player player, bool isSelected)
+    {
+        if (isSelected)
+        {
+            if (!selectedParticipants.Contains(player))
+            {
+                selectedParticipants.Add(player);
+            }
+        }
+        else
+        {
+            selectedParticipants.Remove(player);
+        }
+        createChatButton.gameObject.SetActive(selectedParticipants.Count > 0); // Update create button state
+    }
+
+    private bool ChatExistsWithPlayer(Player player)
+    {
+        string chatId = GetChatId(player);
+        return chatHistory.ContainsKey(chatId) || emptyChatPartners.ContainsKey(chatId);
+    }
+
+    private void OnNewChatSearchValueChanged(string searchText)
+    {
+        searchText = searchText.ToLower();
+        foreach (var kvp in participantObjects)
+        {
+            GameObject participantObj = kvp.Value;
+            TextMeshProUGUI nameText = participantObj.transform.Find("Name").GetComponent<TextMeshProUGUI>();
+            bool matchesSearch = nameText.text.ToLower().Contains(searchText);
+            participantObj.SetActive(matchesSearch);
+        }
+    }
+
+    private void OnNewChatEndEdit(string searchText)
+    {
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        {
+            Debug.Log("Enter key pressed!");
+            int currentCaretPosition = newChatSearchInput.caretPosition;
+            EventSystem.current.SetSelectedGameObject(null);
+            EventSystem.current.SetSelectedGameObject(newChatSearchInput.gameObject);
+
+            StartCoroutine(SetPosition());
+
+            IEnumerator SetPosition()
+            {
+                int width = newChatSearchInput.caretWidth;
+                newChatSearchInput.caretWidth = 0;
+
+                yield return new WaitForEndOfFrame();
+
+                newChatSearchInput.caretWidth = width;
+                newChatSearchInput.caretPosition = currentCaretPosition;
+            }
+        }
+    }
+
+    private void ShowChatList()
+    {
+        chatListContent.SetActive(true);
+        chatWindowContent.SetActive(false);
+        newChatContent.SetActive(false);
+        UpdateChatList();
+    }
+
+    private void CreateNewChats()
+    {
+        if (selectedParticipants.Count > 0)
+        {
+            Player firstParticipant = selectedParticipants[0]; // Take only the first participant
+            string chatId = GetChatId(firstParticipant);
+
+            if (!chatHistory.ContainsKey(chatId) && !emptyChatPartners.ContainsKey(chatId))
+            {
+                emptyChatPartners[chatId] = firstParticipant;
+            }
+
+            selectedParticipants.Clear(); // Clear the list after creating the chat
+
+            ShowChatWindow(firstParticipant); // Directly open the chat window
+        }
+    }
+
+    private void ShowChatWindow(Player participant)
+    {
+        chatListContent.SetActive(false);
+        newChatContent.SetActive(false);
+        chatWindowContent.SetActive(true);
+
+        currentChatPartner = participant;
+        chatWindowTitle.text = participant.NickName;
+        if (participant.CustomProperties.TryGetValue("avatar", out object avatarObj) && avatarObj is int avatarIndex)
+        {
+            chatWindowAvatar.sprite = Participants.Instance.avatarSprites[avatarIndex];
+        }
+
+        UpdateChatMessages();
+    }
+
+    private void UpdateChatMessages()
+    {
+        foreach (Transform child in messageListContent)
+        {
+            Destroy(child.gameObject);
+        }
+
+        string chatId = GetChatId(currentChatPartner);
+        if (chatHistory.ContainsKey(chatId))
+        {
+            DateTime lastDate = DateTime.MinValue;
+            foreach (ChatMessage message in chatHistory[chatId])
+            {
+                if (message.Timestamp.Date != lastDate.Date)
+                {
+                    CreateDateSeparator(message.Timestamp);
+                    lastDate = message.Timestamp.Date;
+                }
+                CreateMessageObject(message);
+            }
+        }
+    }
+
+    private void CreateDateSeparator(DateTime date)
+    {
+        GameObject separatorObj = Instantiate(dateSeparatorPrefab, messageListContent);
+        TextMeshProUGUI dateText = separatorObj.GetComponentInChildren<TextMeshProUGUI>();
+        dateText.text = date.ToString("MMMM d, yyyy");
+    }
+
+    private void CreateMessageObject(ChatMessage message)
+    {
+        GameObject messageObj = Instantiate(messagePrefab, messageListContent);
+        TextMeshProUGUI senderText = messageObj.transform.Find("Sender").GetComponent<TextMeshProUGUI>();
+        Image avatarImage = messageObj.transform.Find("Avatar").GetComponent<Image>();
+        TMP_InputField contentText = messageObj.transform.Find("Content").GetComponent<TMP_InputField>();
+
+        TMPWebGLInputFieldExtension extension = contentText.gameObject.AddComponent<TMPWebGLInputFieldExtension>();
+        extension.SetAsMessageField();
+
+        TextMeshProUGUI timeText = messageObj.transform.Find("Time").GetComponent<TextMeshProUGUI>();
+
+        senderText.text = message.IsLocalPlayer ? "You" : currentChatPartner.NickName;
+
+        // Format message content with clickable links
+        string formattedContent = FormatMessageWithClickableLinks(message.Content);
+        contentText.text = formattedContent;
+
+        timeText.text = message.Timestamp.ToString("hh:mm");
+
+        if (message.IsLocalPlayer)
+        {
+            if (PhotonNetwork.LocalPlayer.CustomProperties.TryGetValue("avatar", out object avatarObj) && avatarObj is int avatarIndex)
+            {
+                avatarImage.sprite = Participants.Instance.avatarSprites[avatarIndex];
+            }
+        }
+        else
+        {
+            if (currentChatPartner.CustomProperties.TryGetValue("avatar", out object avatarObj) && avatarObj is int avatarIndex)
+            {
+                avatarImage.sprite = Participants.Instance.avatarSprites[avatarIndex];
+            }
+        }
+
+        // Add link handling
+        EventTrigger eventTrigger = contentText.gameObject.AddComponent<EventTrigger>();
+
+        EventTrigger.Entry clickEntry = new EventTrigger.Entry();
+        clickEntry.eventID = EventTriggerType.PointerClick;
+        clickEntry.callback.AddListener((eventData) => { OnLinkClicked((PointerEventData)eventData, contentText.textComponent); });
+        eventTrigger.triggers.Add(clickEntry);
+
+        EventTrigger.Entry enterEntry = new EventTrigger.Entry();
+        enterEntry.eventID = EventTriggerType.PointerEnter;
+        enterEntry.callback.AddListener((eventData) => { StartCursorCheck(contentText.textComponent); });
+        eventTrigger.triggers.Add(enterEntry);
+
+        EventTrigger.Entry exitEntry = new EventTrigger.Entry();
+        exitEntry.eventID = EventTriggerType.PointerExit;
+        exitEntry.callback.AddListener((eventData) =>
+        {
+            if (cursorCheckCoroutine != null)
+            {
+                StopCoroutine(cursorCheckCoroutine);
+                cursorCheckCoroutine = null;
+            }
+            UpdateCursor(contentText.textComponent);
+        });
+        eventTrigger.triggers.Add(exitEntry);
+    }
+
+    private string FormatMessageWithClickableLinks(string message)
+    {
+        linkDictionary.Clear();
+        int linkCount = 0;
+        return urlRegex.Replace(message, match =>
+        {
+            string escapedUrl = System.Web.HttpUtility.HtmlEncode(match.Value);
+            linkCount++;
+            string linkId = $"link_{linkCount}";
+            linkDictionary[linkId] = match.Value;
+            return $"<link=\"{linkId}\"><color=#00FFFF><u>{escapedUrl}</u></color></link>";
+        });
+    }
+
+    private void OnLinkClicked(PointerEventData eventData, TMP_Text textComponent)
+    {
+        if (eventData.button == PointerEventData.InputButton.Left)
+        {
+            int linkIndex = TMP_TextUtilities.FindIntersectingLink(textComponent, eventData.position, null);
+            if (linkIndex != -1)
+            {
+                TMP_LinkInfo linkInfo = textComponent.textInfo.linkInfo[linkIndex];
+                string linkId = linkInfo.GetLinkID();
+                if (linkDictionary.TryGetValue(linkId, out string url))
+                {
+                    Application.OpenURL(url);
+                }
+            }
+        }
+    }
+
+    private Coroutine cursorCheckCoroutine;
+
+    private void StartCursorCheck(TMP_Text textComponent)
+    {
+        if (cursorCheckCoroutine != null)
+        {
+            StopCoroutine(cursorCheckCoroutine);
+        }
+        cursorCheckCoroutine = StartCoroutine(CheckCursorOverLink(textComponent));
+    }
+
+    private IEnumerator CheckCursorOverLink(TMP_Text textComponent)
+    {
+        while (true)
+        {
+            UpdateCursor(textComponent);
+            yield return null;
+        }
+    }
+
+    private void UpdateCursor(TMP_Text textComponent)
+    {
+        Vector2 mousePosition = Input.mousePosition;
+        int linkIndex = TMP_TextUtilities.FindIntersectingLink(textComponent, mousePosition, null);
+        SetLinkHoverState(gameObject.name, linkIndex != -1);
+    }
+
+    private void OnDisable()
+    {
+        if (cursorCheckCoroutine != null)
+        {
+            StopCoroutine(cursorCheckCoroutine);
+            cursorCheckCoroutine = null;
+        }
+        SetLinkHoverState(gameObject.name, false);
+    }
+
+    private void OnMessageInputEndEdit(string value)
+    {
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        {
+            SendMessage();
+            EventSystem.current.SetSelectedGameObject(null);
+            EventSystem.current.SetSelectedGameObject(messageInput.gameObject);
+        }
+    }
+
+    private void SendMessage()
+    {
+        if (string.IsNullOrEmpty(messageInput.text)) return;
+
+        string chatId = GetChatId(currentChatPartner);
+        ChatMessage newMessage = new ChatMessage
+        {
+            Content = messageInput.text,
+            Timestamp = DateTime.Now,
+            IsLocalPlayer = true
+        };
+
+        if (!chatHistory.ContainsKey(chatId))
+        {
+            chatHistory[chatId] = new List<ChatMessage>();
+        }
+        chatHistory[chatId].Add(newMessage);
+
+        // Remove from emptyChatPartners if it exists
+        emptyChatPartners.Remove(chatId);
+
+        UpdateChatMessages();
+        messageInput.text = "";
+
+        // Send message to other player using Photon
+        photonView.RPC("ReceiveMessage", currentChatPartner, PhotonNetwork.LocalPlayer.ActorNumber, newMessage.Content, newMessage.Timestamp.Ticks);
+    }
+
+    public void SendMessageToPlayer(Player player, string message)
+    {
+        string chatId = GetChatId(player);
+
+        // Create a new chat if it doesn't exist
+        if (!chatHistory.ContainsKey(chatId) && !emptyChatPartners.ContainsKey(chatId))
+        {
+            emptyChatPartners[chatId] = player;
+        }
+
+        // Show the chat window
+        ShowChatWindow(player);
+
+        if (!isOpen)
+        {
+            OpenMenu();
+        }
+
+        // Send the message
+        ChatMessage newMessage = new ChatMessage
+        {
+            Content = message,
+            Timestamp = DateTime.Now,
+            IsLocalPlayer = true
+        };
+
+        if (!chatHistory.ContainsKey(chatId))
+        {
+            chatHistory[chatId] = new List<ChatMessage>();
+        }
+        chatHistory[chatId].Add(newMessage);
+
+        // Remove from emptyChatPartners if it exists
+        emptyChatPartners.Remove(chatId);
+
+        UpdateChatMessages();
+
+        // Send message to other player using Photon
+        photonView.RPC("ReceiveMessage", player, PhotonNetwork.LocalPlayer.ActorNumber, newMessage.Content, newMessage.Timestamp.Ticks);
+
+        // Update the chat list
+        UpdateChatList();
+    }
+
+
+    [PunRPC]
+    private void ReceiveMessage(int senderActorNumber, string content, long ticks)
+    {
+        Player sender = PhotonNetwork.CurrentRoom.GetPlayer(senderActorNumber);
+        string chatId = GetChatId(sender);
+
+        ChatMessage newMessage = new ChatMessage
+        {
+            Content = content,
+            Timestamp = new DateTime(ticks),
+            IsLocalPlayer = false
+        };
+
+        if (!chatHistory.ContainsKey(chatId))
+        {
+            chatHistory[chatId] = new List<ChatMessage>();
+        }
+        chatHistory[chatId].Add(newMessage);
+
+        // Remove from emptyChatPartners if it exists
+        emptyChatPartners.Remove(chatId);
+
+        if (currentChatPartner == sender && chatWindowContent.activeSelf)
+        {
+            UpdateChatMessages();
+        }
+
+        UpdateChatList();
+    }
+
+    private void UpdateChatList()
+    {
+        foreach (Transform child in chatListTransform)
+        {
+            Destroy(child.gameObject);
+        }
+
+        // Add empty chats
+        foreach (KeyValuePair<string, Player> emptyChat in emptyChatPartners)
+        {
+            CreateChatListItem(emptyChat.Value, null);
+        }
+
+        // Add chats with messages
+        foreach (KeyValuePair<string, List<ChatMessage>> chat in chatHistory)
+        {
+            if (chat.Value.Count > 0)
+            {
+                Player chatPartner = GetPlayerFromChatId(chat.Key);
+                ChatMessage lastMessage = chat.Value[chat.Value.Count - 1];
+                CreateChatListItem(chatPartner, lastMessage);
+            }
+        }
+    }
+
+    private void CreateChatListItem(Player chatPartner, ChatMessage lastMessage)
+    {
+        GameObject chatListItem = Instantiate(chatListItemPrefab, chatListTransform);
+        Image avatarImage = chatListItem.transform.Find("Avatar").GetComponent<Image>();
+        Image statusCircle = chatListItem.transform.Find("Avatar/Status Circle/Status Circle").GetComponent<Image>();
+        TextMeshProUGUI nameText = chatListItem.transform.Find("Name").GetComponent<TextMeshProUGUI>();
+        TextMeshProUGUI messageText = chatListItem.transform.Find("Last Message").GetComponent<TextMeshProUGUI>();
+        TextMeshProUGUI timeText = chatListItem.transform.Find("Time").GetComponent<TextMeshProUGUI>();
+
+        // Set avatar
+        if (chatPartner.CustomProperties.TryGetValue("avatar", out object avatarObj) && avatarObj is int avatarIndex)
+        {
+            avatarImage.sprite = Participants.Instance.avatarSprites[avatarIndex];
+        }
+
+        // Set availability status
+        if (chatPartner.CustomProperties.TryGetValue("AvailabilityStatus", out object availabilityStatus))
+        {
+            AvailabilityManager.AvailabilityStatus status = (AvailabilityManager.AvailabilityStatus)availabilityStatus;
+            Color statusColor = Participants.Instance.GetStatusColor(status);
+            statusCircle.color = statusColor;
+        }
+
+        nameText.text = chatPartner.NickName;
+
+        if (lastMessage != null)
+        {
+            messageText.text = (lastMessage.IsLocalPlayer ? "You: " : "") + lastMessage.Content;
+            timeText.text = lastMessage.Timestamp.ToString("MMM dd");
+        }
+        else
+        {
+            messageText.text = "No messages yet";
+            timeText.text = "";
+        }
+
+        Button chatButton = chatListItem.GetComponent<Button>();
+        chatButton.onClick.AddListener(() => ShowChatWindow(chatPartner));
+    }
+
+    private string GetChatId(Player player)
+    {
+        int localPlayerId = PhotonNetwork.LocalPlayer.ActorNumber;
+        int otherPlayerId = player.ActorNumber;
+        return localPlayerId < otherPlayerId ? $"{localPlayerId}-{otherPlayerId}" : $"{otherPlayerId}-{localPlayerId}";
+    }
+
+    private Player GetPlayerFromChatId(string chatId)
+    {
+        string[] playerIds = chatId.Split('-');
+        int otherPlayerId = int.Parse(playerIds[0]) == PhotonNetwork.LocalPlayer.ActorNumber ? int.Parse(playerIds[1]) : int.Parse(playerIds[0]);
+        return PhotonNetwork.CurrentRoom.GetPlayer(otherPlayerId);
+    }
+
+    public override void OnPlayerLeftRoom(Player otherPlayer)
+    {
+        DeleteChat(otherPlayer);
+        photonView.RPC("DeleteChatRPC", RpcTarget.All, otherPlayer.ActorNumber);
+    }
+
+    private void DeleteChat(Player player)
+    {
+        string chatId = GetChatId(player);
+        chatHistory.Remove(chatId);
+        emptyChatPartners.Remove(chatId);
+        UpdateChatList();
+
+        if (currentChatPartner == player)
+        {
+            ShowChatList();
+        }
+    }
+
+    [PunRPC]
+    private void DeleteChatRPC(int playerActorNumber)
+    {
+        Player player = PhotonNetwork.CurrentRoom.GetPlayer(playerActorNumber);
+        if (player != null)
+        {
+            DeleteChat(player);
+        }
+    }
+
+    public void OnChatInputFieldSelect(string text)
+    {
+        messageInput.placeholder.gameObject.SetActive(false);
+
+        Debug.Log("Input field selected");
+    }
+
+    public void OnChatInputFieldDeselect(string text)
+    {
+        Debug.Log("Input field deselected");
+
+        messageInput.placeholder.gameObject.SetActive(true);
+    }
+
+    public void OnSearchInputFieldSelect(string text)
+    {
+        newChatSearchInput.placeholder.gameObject.SetActive(false);
+
+        Debug.Log("Input field selected");
+    }
+
+    public void OnSearchInputFieldDeselect(string text)
+    {
+        Debug.Log("Input field deselected");
+
+        newChatSearchInput.placeholder.gameObject.SetActive(true);
+    }
+}
+
+public class ChatMessage
+{
+    public string Content;
+    public DateTime Timestamp;
+    public bool IsLocalPlayer;
+}
+
+--------------------------------------------------
+File: PrivateChatManager.cs
+Contents:
+
+--------------------------------------------------
+File: TooltipResizer.cs
+Contents:
+using UnityEngine;
+using TMPro;
+
+[RequireComponent(typeof(RectTransform))]
+public class TooltipResizer : MonoBehaviour
+{
+    private TextMeshProUGUI tooltipText;
+    private RectTransform rectTransform;
+
+    [SerializeField] private float horizontalPadding = 20f; // Padding on left and right
+    [SerializeField] private float verticalPadding = 10f;   // Padding on top and bottom
+    [SerializeField] private float characterWidth = 11f;    // Average width per character at font size 20
+    [SerializeField] private float minWidth = 50f;          // Minimum width of the tooltip
+
+    private void Awake()
+    {
+        tooltipText = GetComponentInChildren<TextMeshProUGUI>();
+        rectTransform = GetComponent<RectTransform>();
+
+        if (tooltipText == null)
+        {
+            Debug.LogError("TooltipResizer: No TextMeshProUGUI component found in children!");
+            return;
+        }
+
+        ResizeTooltip();
+    }
+
+    public void ResizeTooltip()
+    {
+        if (tooltipText == null || string.IsNullOrEmpty(tooltipText.text)) return;
+
+        // Calculate the required width based on text length
+        float textWidth = tooltipText.text.Length * characterWidth;
+        float width = Mathf.Max(minWidth, textWidth + horizontalPadding * 2);
+
+        // Set the width while maintaining the current height
+        rectTransform.sizeDelta = new Vector2(width, rectTransform.sizeDelta.y);
+    }
+
+    // Call this method when you need to update the tooltip text and resize
+    public void UpdateTooltipText(string newText)
+    {
+        if (tooltipText != null)
+        {
+            tooltipText.text = newText;
+            ResizeTooltip();
+        }
+    }
+
+    // Optional: Method to adjust the character width if needed
+    public void SetCharacterWidth(float width)
+    {
+        characterWidth = width;
+        ResizeTooltip();
+    }
+}
+--------------------------------------------------
