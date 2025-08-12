@@ -1,0 +1,18 @@
+{
+    "name": "SmartUtilities2DEditor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:6f3712f93257a4546b6c49ab71d1e26d"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

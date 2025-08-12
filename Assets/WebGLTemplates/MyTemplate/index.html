@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<style>
+* {
+   margin: 0;
+   padding: 0;
+   box-sizing: border-box;
+}
+
+body {
+  background-color: black;
+  height: 100vh;
+}
+</style>
+<script src="Build/UnityLoader.js"></script>
+<script src="AgoraWebSDK/libs/databuilder.js"></script>
+<script src="AgoraWebSDK/libs/agora-extension-virtual-background.js"></script>
+<script src="AgoraWebSDK/libs/virtualbackground.js"></script>
+<script src="AgoraWebSDK/libs/clientmanager.js"></script>
+<script src="AgoraWebSDK/libs/wglwrapper.js"></script>	  
+<script src="AgoraWebSDK/libs/audioeffects.js"></script>
+<script src="AgoraWebSDK/libs/eventmanager.js"></script>
+<script src="AgoraWebSDK/libs/engineglobals.js"></script>	  
+<script src="AgoraWebSDK/libs/watermark.js"></script>	  
+<script src="AgoraWebSDK/libs/customvideo.js"></script>
+<script src="AgoraWebSDK/libs/agorachannel.js"></script>
+<script src="AgoraWebSDK/libs/multichannel.js"></script>
+<script src="AgoraWebSDK/libs/audiosystem.js"></script>
+<script src="AgoraWebSDK/libs/testing.js"></script>
+<script src="AgoraWebSDK/libs/agorautils.js"></script>
+<script src="AgoraWebSDK/libs/audiomixing.js"></script>
+<script src="AgoraWebSDK/agorartcenginev2.js"></script>
+<script src="AgoraWebSDK/vendor/materialize.min.js"></script>
+<script src="AgoraRTC_N.js"></script>
+<script src="AgoraWebSDK/libs/spatial-audio-main.js" type="module"></script>
+<script src="AgoraWebSDK/vendor/jquery.min.js"></script>
+    <title>%UNITY_WEB_NAME% (WebGL)</title>
+    <script src="%UNITY_WEBGL_LOADER_URL%"></script>
+    <script>
+      UnityLoader.instantiate("unityContainer", "%UNITY_WEBGL_BUILD_URL%");
+    </script>
+  </head>
+  <body>
+    <div id="unityContainer" style="width: 100%; height: 100%; margin: 0; padding: 0;"></div>
+  </body>
+</html>

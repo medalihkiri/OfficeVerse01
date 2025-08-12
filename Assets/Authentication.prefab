@@ -1,0 +1,112 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &8882785081648442443
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4336212318450965817}
+  - component: {fileID: 5408736797574440299}
+  - component: {fileID: 4136801383014028401}
+  - component: {fileID: 1898228216254995421}
+  m_Layer: 0
+  m_Name: Authentication
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4336212318450965817
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8882785081648442443}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.23430784, y: 0.24729675, z: 6.783284}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &5408736797574440299
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8882785081648442443}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eb1634470a8c132438e7ae7c7306ee1a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  apiBaseUrl: http://localhost:3000/api
+  requestTimeout: 10
+  authToken: 
+  username: 
+  userId: 
+--- !u!114 &4136801383014028401
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8882785081648442443}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aee6624baf080b9459070f344c3f3ecf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  registerPanel: {fileID: 0}
+  registerUsernameInput: {fileID: 0}
+  registerEmailInput: {fileID: 0}
+  registerPasswordInput: {fileID: 0}
+  registerButton: {fileID: 0}
+  backToLoginButton: {fileID: 0}
+  logoutButton: {fileID: 0}
+  loginPanel: {fileID: 0}
+  loginEmailInput: {fileID: 0}
+  loginPasswordInput: {fileID: 0}
+  loginButton: {fileID: 0}
+  openRegisterPanelButton: {fileID: 0}
+  statusText: {fileID: 0}
+  loggedInPanel: {fileID: 0}
+  welcomeText: {fileID: 0}
+--- !u!114 &1898228216254995421
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8882785081648442443}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97d5afe99e9e55b4f8a4611bfc22c9a9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  createRoomPopup: {fileID: 0}
+  createRoomNameInput: {fileID: 0}
+  privateRoomToggle: {fileID: 0}
+  createRoomPasswordInput: {fileID: 0}
+  createMaxPlayersInput: {fileID: 0}
+  createRoomSubmitButton: {fileID: 0}
+  joinRoomPopup: {fileID: 0}
+  joinRoomNameInput: {fileID: 0}
+  joinRoomPasswordInput: {fileID: 0}
+  joinRoomSubmitButton: {fileID: 0}
+  openCreatePopupButton: {fileID: 0}
+  openJoinPopupButton: {fileID: 0}
+  mainPopup: {fileID: 0}
+  LoadingPanel: {fileID: 0}
+  loadingStatusText: {fileID: 0}
+  cancelLoadingButton: {fileID: 0}
+  statusText: {fileID: 0}
+  playerNameInput: {fileID: 0}
+  avatarSelection: {fileID: 0}
+  maxPlayersDefault: 10

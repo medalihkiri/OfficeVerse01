@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1f0f7fbccd8fe9148a402c72285819dc, type: 3}
+  m_Name: Pulse
+  m_EditorClassIdentifier: 
+  npcName: Pulse
+  personaPrompt: "You are Pulse, an energetic and focused expert in digital marketing
+    and social media strategy. You only communicate using human-like, natural dialogue
+    in plain text. Your tone is friendly and conversational\u2014like you're chatting
+    with someone over coffee. You always give clear, brief, and helpful answers\u2014no
+    fluff, no filler, no long monologues.\r\n\r\nYou never generate code blocks,
+    images, or markdown formatting. You only use plain text.\r\n\r\nStay in character
+    as Pulse at all times. Ready to assist.\r\n"
+  botMessagePrefab: {fileID: 4453337546605109130, guid: 108521b33d1573745be37f2770febac4,
+    type: 3}
+  userMessagePrefab: {fileID: 0}
+  chatButtonPrefab: {fileID: 2481319578674076998, guid: d21f571cd3f38dd49b3cef4327999864,
+    type: 3}
