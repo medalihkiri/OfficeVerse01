@@ -238,7 +238,6 @@ public class RoomManager : MonoBehaviourPunCallbacks
         // --- AUTHENTICATED USER WORKFLOW ---
         else
         {
-            // ... (rest of the authenticated user logic is unchanged)
             isCreatingRoom = true;
             pendingRoomName = roomName;
             pendingPassword = password;
@@ -248,21 +247,35 @@ public class RoomManager : MonoBehaviourPunCallbacks
             LoadingPanel.SetActive(true);
             loadingStatusText.text = "Registering room with server...";
 
-            RoomCreatePayload payload = new RoomCreatePayload { /* ... */ };
+            // --- COMPLETED LOGIC ---
+            // Create the payload with all the room details from the UI.
+            RoomCreatePayload payload = new RoomCreatePayload
+            {
+                name = roomName,
+                isPrivate = isPrivate,
+                password = isPrivate ? password : "", // Only send a password if the room is private
+                maxPlayers = maxPlayers,
+                type = selectedRoomType
+            };
             string json = JsonUtility.ToJson(payload);
 
             StartCoroutine(APIManager.Instance.Post("/rooms", json, (res) =>
             {
-                if (res.result == UnityWebRequest.Result.Success)
+                if (res != null && res.result == UnityWebRequest.Result.Success)
                 {
                     loadingStatusText.text = "Creating room on game network...";
                     StartPhotonCreateRoom(roomName, maxPlayers, isPrivate, password);
                 }
                 else
                 {
-                    if (res.responseCode == 409)
+                    if (res != null && res.responseCode == 409) // 409 Conflict
                     {
                         statusText.text = "❌ A room with this name already exists.";
+                    }
+                    else if (res != null && res.responseCode == 401) // 401 Unauthorized
+                    {
+                        statusText.text = "❌ Your session has expired. Please log in again.";
+                        APIManager.Instance.HandleSessionExpired();
                     }
                     else
                     {

@@ -1,0 +1,9 @@
+{
+    "name": "build-dev",
+    "version": "1.0.0",
+    "description": "",
+    "main": "AgoraRTC_N.js",
+    "scripts": { "start": "http-server" },
+    "author": "",
+    "license": "ISC"
+}
