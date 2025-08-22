@@ -48,7 +48,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (PhotonNetwork.InRoom)
         {
-            StartGame();
+           StartGame();
             
             // Synchronize screen share states when entering the game
             foreach (PlayerController player in otherPlayers)
@@ -148,7 +148,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     public override void OnJoinedRoom()
     {
         Debug.Log("Joined a room.");
-        StartGame();
+        //StartGame();
         
         // Check for active screen shares when joining
         foreach (Player player in PhotonNetwork.CurrentRoom.Players.Values)
@@ -177,7 +177,8 @@ public class GameManager : MonoBehaviourPunCallbacks
 
     public override void OnLeftRoom()
     {
-        StartCoroutine(LoadSceneAfterLeftRoom());
+        StartCoroutine(
+            LoadSceneAfterLeftRoom());
     }
 
     public override void OnPlayerEnteredRoom(Player newPlayer)
@@ -292,35 +293,45 @@ public class GameManager : MonoBehaviourPunCallbacks
 
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
-        // It is best practice to call the base method first.
         base.OnPlayerLeftRoom(otherPlayer);
         UpdateTotalPlayers();
         Debug.Log($"EVENT: Player '{otherPlayer.NickName}' left room. Total players: {PhotonNetwork.CurrentRoom.PlayerCount}");
-        // If the leaving player was screen sharing, clean up their screen share state
+
         if (otherPlayer.CustomProperties.TryGetValue("isScreenSharing", out object isSharing) && (bool)isSharing)
         {
             screenShareObject.SetActive(false);
             screenShareSurface.SetEnable(false);
         }
 
-        // Find the PlayerController associated with the player who left.
-        PlayerController playerToDestroy = null;
-        foreach (var player in otherPlayers)
+        // Try list first
+        PlayerController playerToDestroy = otherPlayers.Find(p => p != null && p.view.OwnerActorNr == otherPlayer.ActorNumber);
+
+        // Fallback: scene scan (in case the list was out of sync)
+        if (playerToDestroy == null)
         {
-            if (player != null && player.view.Owner.ActorNumber == otherPlayer.ActorNumber)
+            foreach (var pc in GameObject.FindObjectsOfType<PlayerController>())
             {
-                playerToDestroy = player;
-                break;
+                if (pc != null && pc.view != null && pc.view.OwnerActorNr == otherPlayer.ActorNumber)
+                {
+                    playerToDestroy = pc;
+                    break;
+                }
             }
         }
 
-        // If we found their controller, remove it from the list and destroy their GameObject.
         if (playerToDestroy != null)
         {
             otherPlayers.Remove(playerToDestroy);
             Destroy(playerToDestroy.gameObject);
         }
+
+        // Extra safety: as master, clear any lingering networked objects owned by the leaver
+        if (PhotonNetwork.IsMasterClient)
+        {
+            PhotonNetwork.DestroyPlayerObjects(otherPlayer);
+        }
     }
+
 
     private IEnumerator LoadSceneAfterLeftRoom()
     {

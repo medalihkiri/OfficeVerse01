@@ -180,8 +180,11 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         view.Owner.SetCustomProperties(nameIDProp);
 
         // Add the player to the list of other players in the game.
-        //GameManager.Instance.otherPlayers.Add(this);
-
+        if (!view.IsMine)
+        {
+            if (GameManager.Instance != null && !GameManager.Instance.otherPlayers.Contains(this))
+                GameManager.Instance.otherPlayers.Add(this);
+        }
         // Initialize the Photon Animator View.
         /*
         if (*/
@@ -342,12 +345,10 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
 
     private void OnDestroy()
     {
-        // Remove the player from the list of other players when it is actually destroyed
-       /* if (GameManager.Instance != null)
-        {
+        if (GameManager.Instance != null)
             GameManager.Instance.otherPlayers.Remove(this);
-        }*/
     }
+
 
     // --- IPunObservable Implementation ---
     public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
@@ -852,9 +853,9 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         bool shouldShow = GameManager.Instance.ShouldShowScreenShare(this);
 
         // Update the player's video object and surface based on the received video state.
-        playerVideoObject.SetActive(enable && (view.IsMine || shouldShow));
-        playerVideoSurface.SetForUser(view.ViewID == GameManager.Instance.myPlayer.view.ViewID ? 0 : (uint)view.ViewID);
-        playerVideoSurface.SetEnable(enable && (view.IsMine || shouldShow));
+        playerScreenObject.SetActive(enable && (view.IsMine || shouldShow));
+        playerScreenSurface.SetForUser(view.ViewID == GameManager.Instance.myPlayer.view.ViewID ? 0 : (uint)view.ViewID);
+        playerScreenSurface.SetEnable(enable && (view.IsMine || shouldShow));
 
         if (enable && (view.IsMine || shouldShow))
         {
