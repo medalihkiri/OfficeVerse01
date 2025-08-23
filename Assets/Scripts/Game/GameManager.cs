@@ -48,8 +48,13 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (PhotonNetwork.InRoom)
         {
-           StartGame();
-            
+            StartGame();
+            Debug.Log("Joined a room.");
+
+            if (GameChatManager.SP != null)
+            {
+                GameChatManager.SP.OnJoinedRoom();
+            }
             // Synchronize screen share states when entering the game
             foreach (PlayerController player in otherPlayers)
             {
@@ -147,9 +152,11 @@ public class GameManager : MonoBehaviourPunCallbacks
 
     public override void OnJoinedRoom()
     {
-        Debug.Log("Joined a room.");
+
+
         //StartGame();
-        
+        base.OnJoinedRoom();
+
         // Check for active screen shares when joining
         foreach (Player player in PhotonNetwork.CurrentRoom.Players.Values)
         {
@@ -184,6 +191,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     public override void OnPlayerEnteredRoom(Player newPlayer)
     {
         base.OnPlayerEnteredRoom(newPlayer);
+        //Debug.Log("Joined a room.");
         UpdateTotalPlayers();
         Debug.Log($"EVENT: Player '{newPlayer.NickName}' entered room. Total players: {PhotonNetwork.CurrentRoom.PlayerCount}");
 

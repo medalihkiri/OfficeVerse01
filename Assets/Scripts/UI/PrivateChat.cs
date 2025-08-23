@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System;
@@ -9,6 +9,7 @@ using Photon.Realtime;
 using UnityEngine.EventSystems;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using System.Linq;
 
 public class PrivateChat : MonoBehaviourPunCallbacks
 {
@@ -331,7 +332,28 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         chatWindowContent.SetActive(true);
 
         currentChatPartner = participant;
+        // Load history from backend
+        ChatBackendManager.Instance.LoadPrivateChat(
+            PhotonNetwork.LocalPlayer.NickName,  // or UserId
+            participant.UserId,                  // must match what you send as recipientId
+            50,
+            (messages) =>
+            {
+                string chatId = GetChatId(participant);
+                chatHistory[chatId] = new List<ChatMessage>();
 
+                foreach (var m in messages.OrderBy(m => DateTime.Parse(m.createdAt)))
+                {
+                    chatHistory[chatId].Add(new ChatMessage
+                    {
+                        Content = m.text,
+                        Timestamp = DateTime.Parse(m.createdAt).ToUniversalTime(),
+                        IsLocalPlayer = (m.senderName == PhotonNetwork.LocalPlayer.NickName)
+                    });
+                }
+
+                UpdateChatMessages();
+            });
         // Restore saved input for this chat
         string chatId = GetChatId(participant);
         messageInput.text = savedInputs.ContainsKey(chatId) ? savedInputs[chatId] : "";
@@ -596,10 +618,19 @@ public class PrivateChat : MonoBehaviourPunCallbacks
 
         // Remove from emptyChatPartners if it exists
         emptyChatPartners.Remove(chatId);
-
         UpdateChatMessages();
         messageInput.text = "";
         ScrollToBottom();
+        var dto = new ChatBackendManager.ChatMessageDTO
+        {
+            messageId = Guid.NewGuid().ToString(),
+            senderName = PhotonNetwork.LocalPlayer.NickName,
+            text = newMessage.Content,
+            createdAt = newMessage.Timestamp.ToString("o"),
+            recipientId = currentChatPartner.UserId, // store Photon userId or ActorNumber
+            isPrivate = true
+        };
+        ChatBackendManager.Instance.SaveMessage(dto);
 
         // Send message to other player using Photon
         photonView.RPC("ReceiveMessage", currentChatPartner, PhotonNetwork.LocalPlayer.ActorNumber, newMessage.Content, newMessage.Timestamp.Ticks);
@@ -608,6 +639,8 @@ public class PrivateChat : MonoBehaviourPunCallbacks
     public void SendMessageToPlayer(Player player, string message)
     {
         string chatId = GetChatId(player);
+
+
 
         // Create a new chat if it doesn't exist
         if (!chatHistory.ContainsKey(chatId) && !emptyChatPartners.ContainsKey(chatId))
@@ -631,16 +664,31 @@ public class PrivateChat : MonoBehaviourPunCallbacks
             IsLocalPlayer = true
         };
 
+        // ✅ Save to backend
+        var dto = new ChatBackendManager.ChatMessageDTO
+        {
+            messageId = Guid.NewGuid().ToString(),
+            senderName = PhotonNetwork.LocalPlayer.NickName,
+            text = newMessage.Content,
+            createdAt = newMessage.Timestamp.ToString("o"),
+            recipientId = currentChatPartner.UserId, // store Photon userId or ActorNumber
+            isPrivate = true
+        };
+        ChatBackendManager.Instance.SaveMessage(dto);
+
         if (!chatHistory.ContainsKey(chatId))
         {
             chatHistory[chatId] = new List<ChatMessage>();
         }
         chatHistory[chatId].Add(newMessage);
 
+
         // Remove from emptyChatPartners if it exists
         emptyChatPartners.Remove(chatId);
 
+
         UpdateChatMessages();
+
 
         // Send message to other player using Photon
         photonView.RPC("ReceiveMessage", player, PhotonNetwork.LocalPlayer.ActorNumber, newMessage.Content, newMessage.Timestamp.Ticks);

@@ -6,6 +6,7 @@ public static class PlayerDataManager
     private static readonly string playerRoomNameKey = "p_room_name_da3";
     private static readonly string playerAvatarKey = "p_avatar_number";
     public static bool IsAuthenticated = false; // ✅ Track backend login
+   // private static readonly string CurrentRoom = "current_room_id";
 
 
     public static string PlayerName
@@ -13,6 +14,14 @@ public static class PlayerDataManager
         get => PlayerPrefs.GetString(playerNameKey, "");
         set => PlayerPrefs.SetString(playerNameKey, value);
     }
+
+  /*  public static string CurrentRoomId
+    {
+        get => PlayerPrefs.GetString(CurrentRoom, "");
+        set => PlayerPrefs.SetString(CurrentRoom, value);
+    }*/
+
+
 
     public static string PlayerRoomName
     {
