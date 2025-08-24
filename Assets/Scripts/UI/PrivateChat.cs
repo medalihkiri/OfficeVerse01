@@ -334,7 +334,7 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         currentChatPartner = participant;
         // Load history from backend
         ChatBackendManager.Instance.LoadPrivateChat(
-            PhotonNetwork.LocalPlayer.NickName,  // or UserId
+            PhotonNetwork.LocalPlayer.UserId,  // or UserId
             participant.UserId,                  // must match what you send as recipientId
             50,
             (messages) =>
