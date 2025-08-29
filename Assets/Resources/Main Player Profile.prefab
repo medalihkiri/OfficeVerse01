@@ -2340,6 +2340,7 @@ MonoBehaviour:
   hoverDuration: 0.2
   windowFadeDuration: 0.3
   b: 0
+  closeBtn: {fileID: 0}
 --- !u!114 &8075905027989718989
 MonoBehaviour:
   m_ObjectHideFlags: 0

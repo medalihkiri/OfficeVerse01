@@ -11,6 +11,8 @@ public class GameManager : MonoBehaviourPunCallbacks
 {
     public static GameManager Instance;
 
+    private bool isShuttingDown = false;
+
     public float minX, maxX;
     public float minY, maxY;
     public string playerPrefabName = "Player";
@@ -90,6 +92,7 @@ public class GameManager : MonoBehaviourPunCallbacks
 
     private void OnDestroy()
     {
+        isShuttingDown = true;
         SpatialRoom.OnScreenShareVisibilityChanged -= HandleScreenShareVisibility;
     }
 
@@ -303,41 +306,34 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         base.OnPlayerLeftRoom(otherPlayer);
         UpdateTotalPlayers();
-        Debug.Log($"EVENT: Player '{otherPlayer.NickName}' left room. Total players: {PhotonNetwork.CurrentRoom.PlayerCount}");
 
+        // Log the event for clear debugging.
+        Debug.Log($"<color=orange>[OnPlayerLeftRoom]</color> Event for player '{otherPlayer.NickName}' (ActorNr: {otherPlayer.ActorNumber}).");
+
+        // Step 1: Clean up game-specific UI and state. This is our responsibility.
         if (otherPlayer.CustomProperties.TryGetValue("isScreenSharing", out object isSharing) && (bool)isSharing)
         {
+            Debug.Log($"'{otherPlayer.NickName}' was screen sharing. Deactivating screen share UI.");
             screenShareObject.SetActive(false);
             screenShareSurface.SetEnable(false);
         }
 
-        // Try list first
-        PlayerController playerToDestroy = otherPlayers.Find(p => p != null && p.view.OwnerActorNr == otherPlayer.ActorNumber);
-
-        // Fallback: scene scan (in case the list was out of sync)
-        if (playerToDestroy == null)
+        // Step 2: Clean up our C# list references. This is also our responsibility.
+        // This prevents NullReferenceExceptions in our own game logic.
+        PlayerController departingPlayerController = otherPlayers.Find(p => p != null && p.view != null && p.view.OwnerActorNr == otherPlayer.ActorNumber);
+        if (departingPlayerController != null)
         {
-            foreach (var pc in GameObject.FindObjectsOfType<PlayerController>())
-            {
-                if (pc != null && pc.view != null && pc.view.OwnerActorNr == otherPlayer.ActorNumber)
-                {
-                    playerToDestroy = pc;
-                    break;
-                }
-            }
+            // We are only removing the reference from our list. We are NOT destroying the GameObject.
+            otherPlayers.Remove(departingPlayerController);
+            Debug.Log($"<color=green>SUCCESS:</color> Removed '{otherPlayer.NickName}' from the 'otherPlayers' C# list.");
         }
 
-        if (playerToDestroy != null)
-        {
-            otherPlayers.Remove(playerToDestroy);
-            Destroy(playerToDestroy.gameObject);
-        }
-
-        // Extra safety: as master, clear any lingering networked objects owned by the leaver
-        if (PhotonNetwork.IsMasterClient)
-        {
-            PhotonNetwork.DestroyPlayerObjects(otherPlayer);
-        }
+        // Step 3: DO NOTHING ELSE.
+        // We will NOT call PhotonNetwork.DestroyPlayerObjects() or any custom RPC.
+        // Photon's automatic cleanup (thanks to the default RoomOption 'CleanupCacheOnLeave = true')
+        // is already handling the destruction of the networked GameObject.
+        // Calling it manually was causing a race condition and the error you observed.
+        Debug.Log("Object destruction is now handled automatically by Photon. No manual cleanup required.");
     }
 
 
@@ -504,6 +500,11 @@ public class GameManager : MonoBehaviourPunCallbacks
 
     public void SetInteractionMessage(bool enable, string text = "")
     {
+
+        if (isShuttingDown || interactionMessage == null)
+        {
+            return;
+        }
         interactionMessage.SetActive(enable);
         interactionMessageText.text = text;
     }

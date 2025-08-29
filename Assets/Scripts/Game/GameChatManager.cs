@@ -177,13 +177,15 @@ public class GameChatManager : MonoBehaviourPunCallbacks
         string messageId = Guid.NewGuid().ToString();
         string senderName = PhotonNetwork.LocalPlayer.NickName;
         string createdAt = DateTime.UtcNow.ToString("o");
+        string senderId = PhotonNetwork.LocalPlayer.UserId;
 
-        view.RPC(nameof(SendChatMessage), RpcTarget.All, text, senderName, messageId, createdAt);
+
+        view.RPC(nameof(SendChatMessage), RpcTarget.All, text, senderName, messageId, createdAt, senderId);
     }
 
 
     [PunRPC]
-    void SendChatMessage(string text, string senderName, string messageId, string createdAt, PhotonMessageInfo info)
+    void SendChatMessage(string text, string senderName, string messageId, string createdAt, string senderId, PhotonMessageInfo info)
     {
         if (info.Sender != PhotonNetwork.LocalPlayer)
             NotificationManager.Instance.PlayPublicMessageSound();
@@ -193,6 +195,7 @@ public class GameChatManager : MonoBehaviourPunCallbacks
         ChatBackendManager.Instance.SaveMessage(new ChatBackendManager.ChatMessageDTO
         {
             messageId = messageId,
+            senderId = senderId,
             senderName = senderName,
             text = text,
             createdAt = createdAt

@@ -63,7 +63,10 @@ public class InteractionManager : MonoBehaviour
             other.gameObject.GetComponentInParent<SpriteRenderer>().color = Color.white;
         }
 
-        GameManager.Instance.SetInteractionMessage(false);
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.SetInteractionMessage(false, "");
+        }
 
         colliderObject = null;
     }

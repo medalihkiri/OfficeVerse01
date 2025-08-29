@@ -20,6 +20,8 @@ public class ChatBackendManager : MonoBehaviour
     public class ChatMessageDTO
     {
         public string messageId;
+        public string senderId;
+
         public string senderName;
         public string text;
         public string createdAt;

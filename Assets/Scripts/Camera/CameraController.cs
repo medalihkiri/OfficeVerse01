@@ -47,6 +47,11 @@ public class CameraController : MonoBehaviour
 
             // Zoom control
             float scroll = Input.GetAxis("Mouse ScrollWheel");
+            
+            if (Input.GetKey(KeyCode.X))
+            {
+                scroll = 0; // If 'X' is held, ignore any scroll input by setting scroll to zero.
+            }
 
             // If we are blocked by UI, don't apply zoom
             if (isZoomingBlocked)

@@ -786,6 +786,17 @@ public class PlayerController : MonoBehaviourPunCallbacks, IPunObservable
         }
     }
 
+    [PunRPC]
+    public void DestroyPlayerRPC()
+    {
+        // This code will now execute on EVERY client, including the master.
+        // It's a direct command to destroy this specific GameObject.
+        if (gameObject != null)
+        {
+            Destroy(gameObject);
+        }
+    }
+
     public void SendAudioState(bool enable)
     {
         if (!view.IsMine) return;
