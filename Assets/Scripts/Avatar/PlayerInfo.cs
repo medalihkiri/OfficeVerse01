@@ -10,107 +10,112 @@ using UnityEngine.Events;
 
 public class PlayerInfo : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
 {
-    /*public GameObject playerInfoPanel;
-    public GameObject playerHeader;*/
     public GameObject indicator;
     public GameObject parentIndicator;
     public GameObject mainPlayerProfile;
     public UnityAction waveBtnAction;
     public UnityAction messageBtnAction;
     public UnityAction requestBtnAction;
-    /*public TextMeshProUGUI playerNameText;
-    public TextMeshProUGUI playerAvailabilityText;
-    public Image playerIcon;
-    public Image playerDotIcon;
-    public Button waveBtn;
-    public Button messageBtn;
-    public Button requestBtn;
-    public AudioSource waveClick;*/
+
     public Player player;
     [HideInInspector]
     public bool isLocalPlayer;
 
-    //[Header("You")]
-    //public GameObject mainPlayerProfile;
-
-    [Header("Fetsh")]
+    [Header("Fetch")]
     public TextMeshProUGUI playerName;
     public Image playerDot;
     public SpriteRenderer playerSprite;
     public Sprite[] playerSprites;
 
-    //bool setUI = false;
     PlayerController playerController;
 
     private void Start()
     {
         playerController = GetComponent<PlayerController>();
     }
+
     public void Show()
     {
-        /*if (player == null)
-            return;
-        if (playerInfoPanel == null || playerHeader == null)
-            return;*/
-
-        //setUI = true;
-        //playerHeader.SetActive(false);
         bool isMainPlayer = player == PhotonNetwork.LocalPlayer;
-        parentIndicator.SetActive(false);
+        if (parentIndicator != null) parentIndicator.SetActive(false);
+
+        if (playerInfoUI == null)
+            playerInfoUI = Object.FindObjectOfType<PlayerInfoUI>();
+
+        if (playerInfoUI == null)
+        {
+            Debug.LogError("PlayerInfoUI not found in the scene.");
+            return;
+        }
+
         try { playerInfoUI.playerInfo = gameObject.GetComponent<PlayerInfo>(); }
-        catch { Debug.LogError("Error"); }
+        catch { Debug.LogError("Error getting PlayerInfo component"); }
+
         playerInfoUI.playerName = playerName;
         playerInfoUI.playerDot = playerDot;
         playerInfoUI.playerSprite = playerSprite;
         playerInfoUI.playerController = playerController;
         playerInfoUI.playerSprites = playerSprites;
+
         if (isMainPlayer)
         {
-            if(playerInfoUI.mainPlayerProfile == null)
+            if (playerInfoUI.mainPlayerProfile == null)
             {
-                Debug.LogError("hi");
-                mainPlayerProfile.transform.SetParent(playerInfoUI.transform);
-                playerInfoUI.mainPlayerProfile = mainPlayerProfile.GetComponent<PlayerProfile>();
-                MatchTransforms(playerInfoUI);
-                playerInfoUI.mainPlayerProfile.GetComponent<AvailabilityManager>().closeBtn.onClick.AddListener(() => playerInfoUI.CloseBtn());
-            }
-            PlayerProfile profile = playerInfoUI.mainPlayerProfile;
-            profile.SetProfilePlayer(player);
-            int avatarIndex = isMainPlayer ? PlayerDataManager.PlayerAvatar : (int)player.CustomProperties["avatar"];
-            profile.SetupProfile(playerInfoUI.playerSprites[avatarIndex], player.NickName, isMainPlayer);
+                if (mainPlayerProfile != null)
+                {
+                    mainPlayerProfile.transform.SetParent(playerInfoUI.transform);
+                    playerInfoUI.mainPlayerProfile = mainPlayerProfile.GetComponent<PlayerProfile>();
+                    MatchTransforms(playerInfoUI);
 
-            if (player.CustomProperties.TryGetValue("AvailabilityStatus", out object status))
+                    var availManager = playerInfoUI.mainPlayerProfile.GetComponent<AvailabilityManager>();
+                    if (availManager != null && availManager.closeBtn != null)
+                        availManager.closeBtn.onClick.AddListener(() => playerInfoUI.CloseBtn());
+                }
+            }
+
+            PlayerProfile profile = playerInfoUI.mainPlayerProfile;
+            if (profile != null)
             {
-                profile.UpdateAvailabilityStatus((AvailabilityManager.AvailabilityStatus)status);
+                profile.SetProfilePlayer(player);
+
+                int avatarIndex = isMainPlayer ? PlayerDataManager.PlayerAvatar : (int)player.CustomProperties["avatar"];
+
+                Sprite safeSprite = null;
+                if (playerInfoUI.playerSprites != null && playerInfoUI.playerSprites.Length > 0)
+                {
+                    if (avatarIndex >= 0 && avatarIndex < playerInfoUI.playerSprites.Length)
+                    {
+                        safeSprite = playerInfoUI.playerSprites[avatarIndex];
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"Avatar index {avatarIndex} out of bounds. Defaulting to 0.");
+                        safeSprite = playerInfoUI.playerSprites[0];
+                    }
+                }
+
+                string safeName = string.IsNullOrEmpty(player.NickName) ? "Guest" : player.NickName;
+
+                profile.SetupProfile(safeSprite, safeName, isMainPlayer);
+
+                if (player.CustomProperties.TryGetValue("AvailabilityStatus", out object status))
+                {
+                    profile.UpdateAvailabilityStatus((AvailabilityManager.AvailabilityStatus)status);
+                }
             }
 
             playerInfoUI.ShowMainPlayerInfo(localPoint);
-
-            /*PlayerProfile profile = mainPlayerProfile.GetComponent<PlayerProfile>();
-            profile.SetProfilePlayer(player);
-            int avatarIndex = isMainPlayer ? PlayerDataManager.PlayerAvatar : (int)player.CustomProperties["avatar"];
-            profile.SetupProfile(playerSprites[avatarIndex], player.NickName, isMainPlayer);
-
-            if (player.CustomProperties.TryGetValue("AvailabilityStatus", out object status))
-            {
-                profile.UpdateAvailabilityStatus((AvailabilityManager.AvailabilityStatus)status);
-            }
-
-            mainPlayerProfile.SetActive(true);
-            mainPlayerProfile.GetComponent<CanvasGroup>().alpha = 1f;
-            playerInfoPanel.SetActive(false);*/
-            //profile.Show();
         }
         else
         {
-            //mainPlayerProfile.SetActive(false);
-            //playerInfoPanel.SetActive(true);
             playerInfoUI.ShowPlayerInfo(localPoint);
         }
     }
 
     public void MatchTransforms(PlayerInfoUI playerInfoUI)
     {
+        if (playerInfoUI.mainPlayerProfile == null || playerInfoUI.posMainPlayerProfile == null) return;
+
         RectTransform targetRectTransform = playerInfoUI.mainPlayerProfile.GetComponent<RectTransform>();
         RectTransform sourceRectTransform = playerInfoUI.posMainPlayerProfile;
 
@@ -123,15 +128,41 @@ public class PlayerInfo : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         targetRectTransform.anchoredPosition = sourceRectTransform.anchoredPosition;
         targetRectTransform.localScale = sourceRectTransform.localScale;
     }
+
     Vector2 localPoint;
     PlayerInfoUI playerInfoUI;
+
     public void OnPointerClick(PointerEventData eventData)
     {
-        playerInfoUI = Object.FindAnyObjectByType<PlayerInfoUI>();
-        Canvas canvas = playerInfoUI.canvas;
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvas.transform as RectTransform, eventData.position
-            , canvas.worldCamera, out localPoint);
-        Show();
+        // --- MODIFICATION START ---
+        // Only allow Left Click to trigger the profile
+        if (eventData.button != PointerEventData.InputButton.Left)
+        {
+            return;
+        }
+        // --- MODIFICATION END ---
+
+        if (playerInfoUI == null)
+            playerInfoUI = Object.FindObjectOfType<PlayerInfoUI>();
+
+        if (playerInfoUI != null && playerInfoUI.canvas != null)
+        {
+            Camera cam = playerInfoUI.canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : playerInfoUI.canvas.worldCamera;
+            RectTransform parentRect = playerInfoUI.GetComponent<RectTransform>();
+
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                parentRect,
+                eventData.position,
+                cam,
+                out localPoint
+            );
+
+            Show();
+        }
+        else
+        {
+            Debug.LogError("PlayerInfoUI or Canvas is missing.");
+        }
     }
 
     public void OnPointerEnter(PointerEventData eventData)
@@ -150,54 +181,7 @@ public class PlayerInfo : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
 
     public void CloseBtn()
     {
-        parentIndicator.SetActive(true);
+        if (parentIndicator != null)
+            parentIndicator.SetActive(true);
     }
-
-    /*void SetPlayerInfo()
-    {
-        if (playerNameText == null && playerAvailabilityText == null && playerIcon == null)
-            return;
-
-        try
-        {
-            int spriteIcon = int.Parse(playerSprite.sprite.name[9].ToString());
-            playerIcon.sprite = playerSprites[spriteIcon - 1];
-        }
-        catch { Debug.LogError("Error When Parsing The PlayerIcon"); }
-
-        playerNameText.text = playerName.text;
-        playerDotIcon.color = playerDot.color;
-        playerAvailabilityText.text = playerController.currentAvailability.ToString();
-
-        if(playerController.currentAvailability == AvailabilityManager.AvailabilityStatus.DoNotDisturb)
-            playerAvailabilityText.text = "Not Available";
-    }
-
-    private void Update()
-    {
-        if (setUI)
-            SetPlayerInfo();
-    }*/
-
-    /*public void CloseBtn()
-    {
-        setUI = false;
-        mainPlayerProfile.SetActive(false);
-        playerInfoPanel.SetActive(false);
-        //playerHeader.SetActive(true);
-        parentIndicator.SetActive(true);
-    }
-    public void OnWaveButtonClick()
-    {
-        waveClick.Stop();
-        waveClick.Play();
-    }
-    public void OnMessageButttonClick()
-    {
-
-    }
-    public void OnRequestButtonClick()
-    {
-        
-    }*/
 }

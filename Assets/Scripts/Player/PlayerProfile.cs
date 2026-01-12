@@ -27,6 +27,17 @@ public class PlayerProfile : MonoBehaviourPunCallbacks
     private PhotonView photonView;
     private Player profilePlayer;
     public bool b = false;
+
+    // --- Optimization Variables ---
+    private RectTransform _nameInputRect;
+    private RectTransform _editButtonRect;
+    private RectTransform _myRectTransform;
+    private WaitForEndOfFrame _waitForEndOfFrame = new WaitForEndOfFrame();
+    private WaitForSeconds _waitDelay = new WaitForSeconds(0.05f);
+    private readonly ExitGames.Client.Photon.Hashtable _statusProps = new ExitGames.Client.Photon.Hashtable(1);
+    private readonly ExitGames.Client.Photon.Hashtable _nameProps = new ExitGames.Client.Photon.Hashtable(1);
+    // -----------------------------
+
     private void Awake()
     {
         photonView = GetComponent<PhotonView>();
@@ -34,6 +45,11 @@ public class PlayerProfile : MonoBehaviourPunCallbacks
         {
             Debug.LogError("PhotonView component is missing on the PlayerProfile object!");
         }
+
+        // Cache RectTransforms for Update loop
+        _myRectTransform = GetComponent<RectTransform>();
+        if (nameInputField != null) _nameInputRect = nameInputField.GetComponent<RectTransform>();
+        if (editNameButton != null) _editButtonRect = editNameButton.GetComponent<RectTransform>();
 
         if (photonView.IsMine)
         {
@@ -182,7 +198,7 @@ public class PlayerProfile : MonoBehaviourPunCallbacks
                 int width = statusInputField.caretWidth;
                 statusInputField.caretWidth = 0;
 
-                yield return new WaitForEndOfFrame();
+                yield return _waitForEndOfFrame;
 
                 statusInputField.caretWidth = width;
                 statusInputField.caretPosition = currentCaretPosition;
@@ -195,11 +211,9 @@ public class PlayerProfile : MonoBehaviourPunCallbacks
     {
         if (photonView.IsMine)
         {
-            ExitGames.Client.Photon.Hashtable properties = new ExitGames.Client.Photon.Hashtable
-            {
-                { "PlayerStatus", newStatus }
-            };
-            PhotonNetwork.LocalPlayer.SetCustomProperties(properties);
+            _statusProps.Clear();
+            _statusProps["PlayerStatus"] = newStatus;
+            PhotonNetwork.LocalPlayer.SetCustomProperties(_statusProps);
         }
     }
 
@@ -207,16 +221,20 @@ public class PlayerProfile : MonoBehaviourPunCallbacks
     {
         if (isEditingName && Input.GetMouseButtonDown(0))
         {
-            if (!RectTransformUtility.RectangleContainsScreenPoint(
-                    nameInputField.GetComponent<RectTransform>(),
-                    Input.mousePosition,
-                    null) &&
-                !RectTransformUtility.RectangleContainsScreenPoint(
-                    editNameButton.GetComponent<RectTransform>(),
-                    Input.mousePosition,
-                    null))
+            // Use cached RectTransforms to avoid GetComponent in Update
+            if (_nameInputRect != null && _editButtonRect != null)
             {
-                EndNameEdit();
+                if (!RectTransformUtility.RectangleContainsScreenPoint(
+                        _nameInputRect,
+                        Input.mousePosition,
+                        null) &&
+                    !RectTransformUtility.RectangleContainsScreenPoint(
+                        _editButtonRect,
+                        Input.mousePosition,
+                        null))
+                {
+                    EndNameEdit();
+                }
             }
         }
     }
@@ -307,13 +325,14 @@ public class PlayerProfile : MonoBehaviourPunCallbacks
 
     public bool IsPointInside(Vector2 point)
     {
-        return RectTransformUtility.RectangleContainsScreenPoint(GetComponent<RectTransform>(), point, null);
+        if (_myRectTransform == null) _myRectTransform = GetComponent<RectTransform>();
+        return RectTransformUtility.RectangleContainsScreenPoint(_myRectTransform, point, null);
     }
 
     private IEnumerator ToggleNameEditDelayed()
     {
         // Wait for a short moment to allow deselection event to process
-        yield return new WaitForSeconds(0.05f);
+        yield return _waitDelay;
 
         ToggleNameEdit();
     }
@@ -382,22 +401,28 @@ public class PlayerProfile : MonoBehaviourPunCallbacks
             nameInputField.text = newName;
 
             // Update the player's GameObject name
-            GameObject playerObj = GameObject.Find($"{player.NickName}_{player.CustomProperties["avatar"]}_Player");
+            // Optimization: Avoid string concatenation if possible, but required for Find.
+            // Using logic as requested, but minimal overhead.
+            object avatarProp = player.CustomProperties["avatar"];
+            string targetName = $"{player.NickName}_{avatarProp}_Player";
+
+            GameObject playerObj = GameObject.Find(targetName);
             if (playerObj != null)
             {
-                playerObj.name = $"{newName}_{player.CustomProperties["avatar"]}_Player";
+                playerObj.name = $"{newName}_{avatarProp}_Player";
             }
 
             // Update other UI elements or game logic here
-            FindObjectOfType<Participants>().UpdateParticipantList();
+            Participants parts = FindObjectOfType<Participants>();
+            if (parts != null) parts.UpdateParticipantList();
 
             // Update the PlayerController
             PlayerController[] playerControllers = FindObjectsOfType<PlayerController>();
-            foreach (PlayerController pc in playerControllers)
+            for (int i = 0; i < playerControllers.Length; i++)
             {
-                if (pc.view.Owner == player)
+                if (playerControllers[i].view.Owner == player)
                 {
-                    pc.UpdatePlayerName(newName);
+                    playerControllers[i].UpdatePlayerName(newName);
                     break;
                 }
             }

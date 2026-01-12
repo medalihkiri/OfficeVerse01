@@ -13,8 +13,15 @@ public class ChatBackendManager : MonoBehaviour
     [Header("Config")]
     [SerializeField] private string backendBaseUrl = "https://officeverseback.onrender.com/rooms";
 
+    public static event Action<string> OnRoomResolved;
+
     private string currentRoomId;
     private string AuthToken => APIManager.Instance.authToken;
+
+    public string GetCurrentRoomId()
+    {
+        return currentRoomId;
+    }
 
     [Serializable]
     public class ChatMessageDTO
@@ -29,6 +36,20 @@ public class ChatBackendManager : MonoBehaviour
         // NEW fields for private chat
         public string recipientId;  // optional
         public bool isPrivate;      // optional
+    }
+
+    [Serializable]
+    public class RoomUserInfo
+    {
+        public string _id;
+        public string username;
+    }
+
+    [Serializable]
+    public class RoomUsersResponse
+    {
+        public bool success;
+        public List<RoomUserInfo> users;
     }
 
 
@@ -71,6 +92,50 @@ public class ChatBackendManager : MonoBehaviour
 
     // --- Internals ---
 
+
+    public void GetUsersInRoom(string roomId, Action<List<RoomUserInfo>> onLoaded)
+    {
+        if (string.IsNullOrEmpty(roomId))
+        {
+            Debug.LogError("Cannot get users: Room ID is null or empty.");
+            onLoaded?.Invoke(new List<RoomUserInfo>());
+            return;
+        }
+        StartCoroutine(GetUsersInRoomRoutine(roomId, onLoaded));
+    }
+
+    private IEnumerator GetUsersInRoomRoutine(string roomId, Action<List<RoomUserInfo>> onLoaded)
+    {
+        // Note: We are using the "rooms" base URL from your existing config.
+        string url = $"{backendBaseUrl}/{roomId}/users";
+        using (UnityWebRequest www = UnityWebRequest.Get(url))
+        {
+            // This endpoint requires authentication
+            if (!string.IsNullOrEmpty(AuthToken))
+                www.SetRequestHeader("Authorization", "Bearer " + AuthToken);
+            else
+            {
+                Debug.LogError("Auth token is missing. Cannot fetch room users.");
+                onLoaded?.Invoke(new List<RoomUserInfo>());
+                yield break;
+            }
+
+            yield return www.SendWebRequest();
+
+            if (www.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogWarning($"⚠ GetUsersInRoom failed: {www.responseCode} - {www.error}");
+                onLoaded?.Invoke(new List<RoomUserInfo>());
+                yield break;
+            }
+
+            var resp = JsonConvert.DeserializeObject<RoomUsersResponse>(www.downloadHandler.text);
+            if (resp != null && resp.success && resp.users != null)
+                onLoaded?.Invoke(resp.users);
+            else
+                onLoaded?.Invoke(new List<RoomUserInfo>());
+        }
+    }
     private IEnumerator ResolveRoomIdAndLoadHistory(string photonRoomName, int limit, Action<List<ChatMessageDTO>> onLoaded)
     {
         string encoded = UnityWebRequest.EscapeURL(photonRoomName);
@@ -92,7 +157,7 @@ public class ChatBackendManager : MonoBehaviour
                     var roomObj = (Newtonsoft.Json.Linq.JObject)dict["room"];
                     currentRoomId = roomObj["_id"].ToString();
                     Debug.Log("✅ Resolved backend roomId: " + currentRoomId);
-
+                    OnRoomResolved?.Invoke(currentRoomId);
                     StartCoroutine(LoadRecentMessages(limit, onLoaded));
                 }
                 else
@@ -113,8 +178,20 @@ public class ChatBackendManager : MonoBehaviour
 
     private IEnumerator SaveMessageToBackend(ChatMessageDTO dto)
     {
-        Debug.Log("🌐 SaveMessageToBackend called for " + dto.text + " (private=" + dto.isPrivate + ")");
-        string url = $"{backendBaseUrl}/{currentRoomId}/messages";
+        if (string.IsNullOrEmpty(currentRoomId) && !dto.isPrivate)
+        {
+            Debug.LogError("❌ Cannot save public message: currentRoomId is not set. Was ResolveRoom ever called?");
+            yield break;
+        }
+
+        // The backend endpoint requires a room ID in the URL, even for private messages.
+        // We can use a placeholder or the current room ID. The backend will ignore it
+        // when isPrivate is true.
+        string roomIdForEndpoint = dto.isPrivate ? (currentRoomId ?? "private") : currentRoomId;
+
+
+        Debug.Log($"🌐 Saving message... Private: {dto.isPrivate}, Text: {dto.text}");
+        string url = $"{backendBaseUrl}/{roomIdForEndpoint}/messages";
         string json = JsonConvert.SerializeObject(dto);
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
 
@@ -129,9 +206,9 @@ public class ChatBackendManager : MonoBehaviour
             yield return www.SendWebRequest();
 
             if (www.result == UnityWebRequest.Result.Success)
-                Debug.Log($"✅ Message saved: {www.downloadHandler.text}");
+                Debug.Log($"✅ Message saved successfully. Response: {www.downloadHandler.text}");
             else
-                Debug.LogError($"❌ SaveMessageToBackend failed: {www.responseCode}, {www.error}, body={json}");
+                Debug.LogError($"❌ SaveMessageToBackend failed: {www.responseCode}, {www.error}\nURL: {url}\nBody: {json}");
         }
     }
 

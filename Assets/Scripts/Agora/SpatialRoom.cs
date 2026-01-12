@@ -7,6 +7,8 @@ using Photon.Realtime;
 using UnityEngine.UI;
 using Pathfinding;
 using System.Linq;
+using ExitGames.Client.Photon; // Required for Hashtable
+
 
 public class SpatialRoom : MonoBehaviourPunCallbacks
 {
@@ -17,6 +19,7 @@ public class SpatialRoom : MonoBehaviourPunCallbacks
     private Light2D roomLight;
     private Light2D activeGlobalLight;
     //private Light2D disabledGlobalLight;
+    public const string IN_ROOM_PROPERTY_KEY = "inRoom";
 
     public static Dictionary<int, int> PlayersInRooms = new Dictionary<int, int>();
     private static int nextRoomId = 1;
@@ -67,13 +70,32 @@ public class SpatialRoom : MonoBehaviourPunCallbacks
         }
     }
 
+    public override void OnPlayerLeftRoom(Player otherPlayer)
+    {
+        // When a player disconnects, remove them from our tracking dictionaries
+        // to prevent "ghost" players from breaking the room logic.
+        if (PlayersInRooms.ContainsKey(otherPlayer.ActorNumber))
+        {
+            PlayersInRooms.Remove(otherPlayer.ActorNumber);
+        }
+        if (PlayersInAnyRoom.ContainsKey(otherPlayer.ActorNumber))
+        {
+            PlayersInAnyRoom.Remove(otherPlayer.ActorNumber);
+        }
+    }
+
+
     private void OnTriggerEnter2D(Collider2D other)
     {
         if (other.TryGetComponent(out PlayerController player))
         {
             if (player.view.IsMine)
             {
-                player.GetComponent<SpatialAudio>().SetInRoom(true, roomId);
+                var spatialAudio = player.GetComponent<SpatialAudio>();
+                spatialAudio.SetInRoom(true, roomId);
+                var props = new Hashtable { { IN_ROOM_PROPERTY_KEY, roomId } };
+                PhotonNetwork.LocalPlayer.SetCustomProperties(props);
+                spatialAudio.ForceUpdateSpatialVolumes(); // <--- ADD THIS LINE
                 ControlRoomLightAsync(true);
                 ControlGlobalLightAsync(false);
 
@@ -86,11 +108,11 @@ public class SpatialRoom : MonoBehaviourPunCallbacks
             playersInside.Add(player);
             PlayersInRooms[player.view.OwnerActorNr] = roomId;
             PlayersInAnyRoom[player.view.OwnerActorNr] = true;
-            UpdateAudioSettings();
+            //UpdateAudioSettings();
             UpdateScreenShareVisibility(player, true);
             
             // Update video visibility for all players when someone enters a room
-            foreach (PlayerController otherPlayer in GameManager.Instance.otherPlayers)
+            /*foreach (PlayerController otherPlayer in GameManager.Instance.otherPlayers)
             {
                 if (otherPlayer.view.Owner.CustomProperties.TryGetValue("isVideoEnabled", out object isEnabled) && (bool)isEnabled)
                 {
@@ -102,7 +124,7 @@ public class SpatialRoom : MonoBehaviourPunCallbacks
                 {
                     GameManager.Instance.UpdateScreenShareVisibility(otherPlayer);
                 }
-            }
+            }*/
 
             // Also check local player's screen share
             if (GameManager.Instance.myPlayer.view.Owner.CustomProperties.TryGetValue("isScreenSharing", out object localIsSharing) && (bool)localIsSharing)
@@ -118,7 +140,11 @@ public class SpatialRoom : MonoBehaviourPunCallbacks
         {
             if (player.view.IsMine)
             {
-                player.GetComponent<SpatialAudio>().SetInRoom(false, 0);
+                var spatialAudio = player.GetComponent<SpatialAudio>();
+                spatialAudio.SetInRoom(false, 0);
+                var props = new Hashtable { { IN_ROOM_PROPERTY_KEY, 0 } };
+                PhotonNetwork.LocalPlayer.SetCustomProperties(props);
+                spatialAudio.ForceUpdateSpatialVolumes(); // <--- ADD THIS LINE
                 ControlGlobalLightAsync(true);
                 ControlRoomLightAsync(false);
 
@@ -132,11 +158,11 @@ public class SpatialRoom : MonoBehaviourPunCallbacks
             playersInside.Remove(player);
             PlayersInRooms.Remove(player.view.OwnerActorNr);
             PlayersInAnyRoom[player.view.OwnerActorNr] = false;
-            UpdateAudioSettings();
+            //UpdateAudioSettings();
             UpdateScreenShareVisibility(player, false);
 
             // Update video visibility for all players when someone leaves a room
-            foreach (PlayerController otherPlayer in GameManager.Instance.otherPlayers)
+            /*foreach (PlayerController otherPlayer in GameManager.Instance.otherPlayers)
             {
                 if (otherPlayer.view.Owner.CustomProperties.TryGetValue("isVideoEnabled", out object isEnabled) && (bool)isEnabled)
                 {
@@ -148,7 +174,7 @@ public class SpatialRoom : MonoBehaviourPunCallbacks
                 {
                     GameManager.Instance.UpdateScreenShareVisibility(otherPlayer);
                 }
-            }
+            }*/
 
             // Also check local player's screen share
             if (GameManager.Instance.myPlayer.view.Owner.CustomProperties.TryGetValue("isScreenSharing", out object localIsSharing) && (bool)localIsSharing)
@@ -264,9 +290,9 @@ public class SpatialRoom : MonoBehaviourPunCallbacks
         //disabledGlobalLight.enabled = !active;
     }
 
-    private void UpdateAudioSettings()
+    /*private void UpdateAudioSettings()
     {
-        foreach (PlayerController p1 in playersInside)
+       /* foreach (PlayerController p1 in playersInside)
         {
             uint agoraID1 = GetAgoraID(p1);
 
@@ -284,7 +310,7 @@ public class SpatialRoom : MonoBehaviourPunCallbacks
                 }
             }
         }
-    }
+    }*/
 
     private void UpdateScreenShareVisibility(PlayerController player, bool entering)
     {

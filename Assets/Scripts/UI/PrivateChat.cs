@@ -17,10 +17,7 @@ public class PrivateChat : MonoBehaviourPunCallbacks
     private bool isShuttingDown = false;
 
     [Header("Main UI Elements")]
-    public RectTransform menuPanel;
-    public float slideDuration = 0.5f;
-    public float slideDistance = 400f;
-    public Button toggleButton;
+    // removed menuPanel, slideDuration, slideDistance, toggleButton
     public GameObject chatListContent;
     public GameObject chatWindowContent;
     public GameObject newChatContent;
@@ -74,11 +71,11 @@ public class PrivateChat : MonoBehaviourPunCallbacks
 
     private void Start()
     {
-        menuPanel.anchoredPosition = menuPanel.anchoredPosition + new Vector2(slideDistance, 0);
+        // Removed menuPanel positioning and toggleButton listener
 
-        toggleButton.onClick.AddListener(ToggleMenu);
-        chatCloseButton.onClick.AddListener(CloseMenu);
-        chatListCloseButton.onClick.AddListener(CloseMenu);
+        if (chatCloseButton != null) chatCloseButton.onClick.AddListener(CloseMenu);
+        if (chatListCloseButton != null) chatListCloseButton.onClick.AddListener(CloseMenu);
+
         newChatButton.onClick.AddListener(ShowNewChatWindow);
         chatBackButton.onClick.AddListener(ShowChatList);
         newChatBackButton.onClick.AddListener(ShowChatList);
@@ -94,7 +91,7 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         messageInput.onDeselect.AddListener(OnChatInputFieldDeselect);
         sendMessageButton.onClick.AddListener(() => SendMessage());
 
-        menuPanel.gameObject.SetActive(false);
+        // Set initial internal state
         chatListContent.SetActive(true);
         chatWindowContent.SetActive(false);
         newChatContent.SetActive(false);
@@ -103,80 +100,19 @@ public class PrivateChat : MonoBehaviourPunCallbacks
 
     private void OnDestroy()
     {
-        // When Unity destroys this object (e.g., during a scene change),
-        // set this flag to true.
         isShuttingDown = true;
     }
 
-    public void ToggleMenu()
-    {
-        if (!isOpen)
-        {
-            OpenMenu();
-        }
-        else
-        {
-            CloseMenu();
-        }
-    }
-
-    public void OpenMenu()
-    {
-        GetComponent<ButtonHoverEffect>().enabled = false;
-        GetComponent<ButtonHoverEffect>().targetImage.color = new Color(GetComponent<ButtonHoverEffect>().targetImage.color.r, GetComponent<ButtonHoverEffect>().targetImage.color.g, GetComponent<ButtonHoverEffect>().targetImage.color.b, 100f);
-
-        Participants participantsMenu = Participants.Instance;
-        if (participantsMenu != null && participantsMenu.isOpen)
-        {
-            participantsMenu.ToggleMenu();
-        }
-
-        menuPanel.gameObject.SetActive(true);
-        StartCoroutine(SlideMenu(true));
-        isOpen = true;
-        UpdateChatList();
-
-        // Clear notifications when opening chat
-        NotificationManager.Instance.ClearNotifications();
-    }
+    // Removed ToggleMenu and SlideMenu methods
 
     public void CloseMenu()
     {
         GetComponent<ButtonHoverEffect>().enabled = true;
-        //GetComponent<ButtonHoverEffect>().isHovering = false;
-
-        StartCoroutine(SlideMenu(false));
         isOpen = false;
-    }
 
-    private IEnumerator SlideMenu(bool open)
-    {
-        toggleButton.interactable = false;
-        chatCloseButton.interactable = false;
-        chatListCloseButton.interactable = false;
-
-        float elapsedTime = 0f;
-        Vector2 startPosition = menuPanel.anchoredPosition;
-        Vector2 endPosition = open ? startPosition - new Vector2(slideDistance, 0) : startPosition + new Vector2(slideDistance, 0);
-
-        while (elapsedTime < slideDuration)
-        {
-            elapsedTime += Time.deltaTime;
-            float t = Mathf.SmoothStep(0, 1, elapsedTime / slideDuration);
-            menuPanel.anchoredPosition = Vector2.Lerp(startPosition, endPosition, t);
-            yield return null;
-        }
-
-        menuPanel.anchoredPosition = endPosition;
-
-        if (!open)
-        {
-            menuPanel.gameObject.SetActive(false);
-        }
-
-        toggleButton.interactable = true;
-        chatCloseButton.interactable = true;
-        chatListCloseButton.interactable = true;
+        // Logic to actually hide the panel is now handled by your external script
+        // or you can disable the gameObject here if this script is on the panel itself:
+        // gameObject.SetActive(false);
     }
 
     private void ShowNewChatWindow()
@@ -199,7 +135,7 @@ public class PrivateChat : MonoBehaviourPunCallbacks
 
         foreach (Player player in PhotonNetwork.PlayerList)
         {
-            if (player != PhotonNetwork.LocalPlayer && !ChatExistsWithPlayer(player)) // Check if chat already exists
+            if (player != PhotonNetwork.LocalPlayer && !ChatExistsWithPlayer(player))
             {
                 GameObject participantObj = Instantiate(newChatParticipantPrefab, newChatParticipantListContent);
                 SetupNewChatParticipantObject(participantObj, player);
@@ -226,7 +162,6 @@ public class PrivateChat : MonoBehaviourPunCallbacks
 
         selectionToggle.onValueChanged.AddListener((isOn) => OnNewChatParticipantSelected(player, isOn));
 
-        // Store references for status updates
         participantObj.name = $"Participant_{player.ActorNumber}";
     }
 
@@ -253,7 +188,7 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         {
             selectedParticipants.Remove(player);
         }
-        createChatButton.gameObject.SetActive(selectedParticipants.Count > 0); // Update create button state
+        createChatButton.gameObject.SetActive(selectedParticipants.Count > 0);
     }
 
     private bool ChatExistsWithPlayer(Player player)
@@ -310,7 +245,7 @@ public class PrivateChat : MonoBehaviourPunCallbacks
     {
         if (selectedParticipants.Count > 0)
         {
-            Player firstParticipant = selectedParticipants[0]; // Take only the first participant
+            Player firstParticipant = selectedParticipants[0];
             string chatId = GetChatId(firstParticipant);
 
             if (!chatHistory.ContainsKey(chatId) && !emptyChatPartners.ContainsKey(chatId))
@@ -318,9 +253,8 @@ public class PrivateChat : MonoBehaviourPunCallbacks
                 emptyChatPartners[chatId] = firstParticipant;
             }
 
-            selectedParticipants.Clear(); // Clear the list after creating the chat
-
-            ShowChatWindow(firstParticipant); // Directly open the chat window
+            selectedParticipants.Clear();
+            ShowChatWindow(firstParticipant);
         }
     }
 
@@ -328,11 +262,11 @@ public class PrivateChat : MonoBehaviourPunCallbacks
     {
         messageListContent.GetComponent<CanvasGroup>().gameObject.SetActive(false);
         StartCoroutine(wait());
-        // Save current input if we're switching from another chat
+
         if (currentChatPartner != null)
         {
-            string currentChatId = GetChatId(currentChatPartner);
-            savedInputs[currentChatId] = messageInput.text;
+            string previousChatId = GetChatId(currentChatPartner);
+            savedInputs[previousChatId] = messageInput.text;
         }
 
         chatListContent.SetActive(false);
@@ -340,45 +274,65 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         chatWindowContent.SetActive(true);
 
         currentChatPartner = participant;
+        isOpen = true; // Ensure logic knows window is requested open
 
-        string localUserId = PhotonNetwork.LocalPlayer.UserId;
+        string localUserId = APIManager.Instance.userId;
         string participantUserId = participant.UserId;
 
         if (string.IsNullOrEmpty(localUserId) || string.IsNullOrEmpty(participantUserId))
         {
-            Debug.LogError($"[PrivateChat] Cannot load chat history. One or both UserIDs are null or empty. Local: '{localUserId}', Participant: '{participantUserId}'");
-            return; // Stop execution to prevent a faulty API call.
+            Debug.LogError($"[PrivateChat] Cannot load chat history. UserIDs missing.");
+            return;
         }
-        
-        Debug.Log($"[PrivateChat] Loading history between Local User ({localUserId}) and Participant ({participantUserId})");
 
-        // Load history from backend
+        ClearMessageUI();
+
         ChatBackendManager.Instance.LoadPrivateChat(
-            localUserId,  // or UserId
-            participantUserId,                  // must match what you send as recipientId
-            50,
-            (messages) =>
-            {
-                string chatId = GetChatId(participant);
-                chatHistory[chatId] = new List<ChatMessage>();
-
-                foreach (var m in messages.OrderBy(m => DateTime.Parse(m.createdAt)))
+                localUserId,
+                participantUserId,
+                50,
+                (loadedMessages) =>
                 {
-                    chatHistory[chatId].Add(new ChatMessage
+                    string chatId = GetChatId(participant);
+
+                    // Convert DTOs to local ChatMessage objects
+                    List<ChatMessage> incomingHistory = new List<ChatMessage>();
+                    foreach (var msgDto in loadedMessages.OrderBy(m => DateTime.Parse(m.createdAt)))
                     {
-                        Content = m.text,
-                        Timestamp = DateTime.Parse(m.createdAt).ToUniversalTime(),
-                        IsLocalPlayer = (m.senderId == PhotonNetwork.LocalPlayer.NickName)
-                    });
-                }
+                        incomingHistory.Add(new ChatMessage
+                        {
+                            Content = msgDto.text,
+                            Timestamp = DateTime.Parse(msgDto.createdAt).ToUniversalTime(),
+                            IsLocalPlayer = (msgDto.senderId == localUserId)
+                        });
+                    }
 
-                UpdateChatMessages();
+                    // Check if chatHistory already has entries (real-time messages received during fetch)
+                    if (chatHistory.ContainsKey(chatId))
+                    {
+                        // Prepend loaded messages to existing real-time messages to avoid data loss
+                        chatHistory[chatId].InsertRange(0, incomingHistory);
+                    }
+                    else
+                    {
+                        chatHistory[chatId] = incomingHistory;
+                    }
 
-            });
-        // Restore saved input for this chat
-        string chatId = GetChatId(participant);
-        messageInput.text = savedInputs.ContainsKey(chatId) ? savedInputs[chatId] : "";
+                    // FIX DUPLICATION: If we have messages now, remove this chat from "emptyChatPartners"
+                    // because it will now be rendered by the chatHistory loop in UpdateChatList.
+                    if (chatHistory[chatId].Count > 0 && emptyChatPartners.ContainsKey(chatId))
+                    {
+                        emptyChatPartners.Remove(chatId);
+                    }
+
+                    UpdateChatMessagesUI();
+                    UpdateChatList(); // Refresh the list to reflect the move from "Empty" to "History"
+                });
+
+        string chatIdCurrent = GetChatId(participant);
+        messageInput.text = savedInputs.ContainsKey(chatIdCurrent) ? savedInputs[chatIdCurrent] : "";
         chatWindowTitle.text = participant.NickName;
+
         if (participant.CustomProperties.TryGetValue("avatar", out object avatarObj) && avatarObj is int avatarIndex)
         {
             chatWindowAvatar.sprite = Participants.Instance.avatarSprites[avatarIndex];
@@ -470,7 +424,6 @@ public class PrivateChat : MonoBehaviourPunCallbacks
 
         senderText.text = message.IsLocalPlayer ? "You" : currentChatPartner.NickName;
 
-        // Format message content with clickable links
         string formattedContent = FormatMessageWithClickableLinks(message.Content);
         contentText.text = formattedContent;
 
@@ -493,7 +446,6 @@ public class PrivateChat : MonoBehaviourPunCallbacks
             }
         }
 
-        // Add link handling
         EventTrigger eventTrigger = contentText.gameObject.AddComponent<EventTrigger>();
 
         EventTrigger.Entry clickEntry = new EventTrigger.Entry();
@@ -520,7 +472,6 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         eventTrigger.triggers.Add(exitEntry);
 
         contentText.text = contentText.text.Replace("\r\n", "");
-        //contentText.text += "\r\n";
         messageObj.UpdateTransform();
         StartCoroutine(WaitAndUpdate(messageObj));
         messageInput.text = "";
@@ -532,12 +483,6 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         messageObj.UpdateTransform();
         messageObj.GetComponent<CanvasGroup>().alpha = 1.0f;
         messageObj.gameObject.SetActive(true);
-    }
-    IEnumerator WaitAndUpdatee(TextParagraph messageObj)
-    {
-        yield return new WaitForSeconds(0.1f);
-        messageObj.GetComponent<CanvasGroup>().alpha = 1.0f;
-        messageObj.cg.ForEach(cgs => cgs.ignoreParentGroups = true);
     }
 
     private string FormatMessageWithClickableLinks(string message)
@@ -552,6 +497,11 @@ public class PrivateChat : MonoBehaviourPunCallbacks
             linkDictionary[linkId] = match.Value;
             return $"<link=\"{linkId}\"><color=#00FFFF><u>{escapedUrl}</u></color></link>";
         });
+    }
+
+    public override void OnPlayerEnteredRoom(Player newPlayer)
+    {
+        UpdateChatList();
     }
 
     private void OnLinkClicked(PointerEventData eventData, TMP_Text textComponent)
@@ -591,14 +541,10 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         }
     }
 
-
     private void UpdateCursor(TMP_Text textComponent)
     {
         Vector2 mousePosition = Input.mousePosition;
         int linkIndex = TMP_TextUtilities.FindIntersectingLink(textComponent, mousePosition, null);
-        try { SetLinkHoverState(gameObject.name, linkIndex != -1); } catch { }
-
-        // This prevents the error from happening in the Editor and handles it in the build.
 #if UNITY_WEBGL && !UNITY_EDITOR
     try
     {
@@ -606,8 +552,7 @@ public class PrivateChat : MonoBehaviourPunCallbacks
     }
     catch (System.Exception e)
     {
-        // Log the error for debugging but don't let it crash the script.
-        Debug.LogWarning("SetLinkHoverState call failed. This is safe to ignore during scene transitions. Error: " + e.Message);
+        Debug.LogWarning("SetLinkHoverState call failed: " + e.Message);
     }
 #endif
     }
@@ -619,7 +564,10 @@ public class PrivateChat : MonoBehaviourPunCallbacks
             StopCoroutine(cursorCheckCoroutine);
             cursorCheckCoroutine = null;
         }
-        SetLinkHoverState(gameObject.name, false);
+        // Safety check for DLL import
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try { SetLinkHoverState(gameObject.name, false); } catch {}
+#endif
     }
 
     private void OnMessageInputEndEdit(string value)
@@ -634,10 +582,13 @@ public class PrivateChat : MonoBehaviourPunCallbacks
 
     public void SendMessage()
     {
-        if (string.IsNullOrEmpty(messageInput.text)) return;
+        string messageText = messageInput.text.Trim();
+        if (string.IsNullOrEmpty(messageText) || currentChatPartner == null) return;
 
         string chatId = GetChatId(currentChatPartner);
-        savedInputs.Remove(chatId); // Clear saved input after sending
+        savedInputs.Remove(chatId);
+        DateTime utcNow = DateTime.UtcNow;
+
         ChatMessage newMessage = new ChatMessage
         {
             Content = messageInput.text,
@@ -651,48 +602,40 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         }
         chatHistory[chatId].Add(newMessage);
 
-        // Remove from emptyChatPartners if it exists
+        string recipientDatabaseId = currentChatPartner.UserId;
+
         emptyChatPartners.Remove(chatId);
         UpdateChatMessages();
         messageInput.text = "";
         ScrollToBottom();
+
         var dto = new ChatBackendManager.ChatMessageDTO
         {
             messageId = Guid.NewGuid().ToString(),
-            senderId = PhotonNetwork.LocalPlayer.UserId,
+            senderId = APIManager.Instance.userId,
             senderName = PhotonNetwork.LocalPlayer.NickName,
             text = newMessage.Content,
             createdAt = newMessage.Timestamp.ToString("o"),
-            recipientId = currentChatPartner.UserId, // store Photon userId or ActorNumber
+            recipientId = recipientDatabaseId,
             isPrivate = true
         };
         ChatBackendManager.Instance.SaveMessage(dto);
 
-        // Send message to other player using Photon
-        photonView.RPC("ReceiveMessage", currentChatPartner, PhotonNetwork.LocalPlayer.ActorNumber, newMessage.Content, newMessage.Timestamp.Ticks);
+        photonView.RPC(nameof(ReceiveMessage), currentChatPartner, PhotonNetwork.LocalPlayer.ActorNumber, newMessage.Content, utcNow.Ticks);
     }
 
     public void SendMessageToPlayer(Player player, string message)
     {
         string chatId = GetChatId(player);
+        string recipientDatabaseId = player.UserId;
 
-
-
-        // Create a new chat if it doesn't exist
         if (!chatHistory.ContainsKey(chatId) && !emptyChatPartners.ContainsKey(chatId))
         {
             emptyChatPartners[chatId] = player;
         }
 
-        // Show the chat window
         ShowChatWindow(player);
 
-        if (!isOpen)
-        {
-            OpenMenu();
-        }
-
-        // Send the message
         ChatMessage newMessage = new ChatMessage
         {
             Content = message,
@@ -700,15 +643,14 @@ public class PrivateChat : MonoBehaviourPunCallbacks
             IsLocalPlayer = true
         };
 
-        // ✅ Save to backend
         var dto = new ChatBackendManager.ChatMessageDTO
         {
             messageId = Guid.NewGuid().ToString(),
-            senderId = PhotonNetwork.LocalPlayer.UserId,
+            senderId = APIManager.Instance.userId,
             senderName = PhotonNetwork.LocalPlayer.NickName,
             text = newMessage.Content,
             createdAt = newMessage.Timestamp.ToString("o"),
-            recipientId = player.UserId, // store Photon userId or ActorNumber
+            recipientId = recipientDatabaseId,
             isPrivate = true
         };
         ChatBackendManager.Instance.SaveMessage(dto);
@@ -719,26 +661,21 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         }
         chatHistory[chatId].Add(newMessage);
 
-
-        // Remove from emptyChatPartners if it exists
         emptyChatPartners.Remove(chatId);
-
 
         UpdateChatMessages();
 
-
-        // Send message to other player using Photon
         photonView.RPC("ReceiveMessage", player, PhotonNetwork.LocalPlayer.ActorNumber, newMessage.Content, newMessage.Timestamp.Ticks);
 
-        // Update the chat list
         UpdateChatList();
     }
-
 
     [PunRPC]
     private void ReceiveMessage(int senderActorNumber, string content, long ticks)
     {
         Player sender = PhotonNetwork.CurrentRoom.GetPlayer(senderActorNumber);
+        if (sender == null) return;
+
         string chatId = GetChatId(sender);
 
         DateTime utcTime = new DateTime(ticks, DateTimeKind.Utc);
@@ -756,41 +693,33 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         }
         chatHistory[chatId].Add(newMessage);
 
-        // Remove from emptyChatPartners if it exists
-        emptyChatPartners.Remove(chatId);
-
-        if (currentChatPartner == sender && chatWindowContent.activeSelf)
+        if (currentChatPartner != null && currentChatPartner.ActorNumber == sender.ActorNumber && chatWindowContent.activeSelf)
         {
-            UpdateChatMessages();
+            UpdateChatMessagesUI();
             ScrollToBottom();
         }
 
         UpdateChatList();
 
-        // Play sound and show notification
         NotificationManager.Instance.PlayPrivateMessageSound();
         NotificationManager.Instance.IncrementNotification();
     }
 
     private void UpdateChatList()
     {
-        if (chatListTransform == null)
-        {
-            return;
-        }
+        if (chatListTransform == null) return;
 
         foreach (Transform child in chatListTransform)
         {
             Destroy(child.gameObject);
         }
+        chatListTransform.DetachChildren(); // Fixes duplication bug by clearing hierarchy logic immediately
 
-        // Add empty chats
         foreach (KeyValuePair<string, Player> emptyChat in emptyChatPartners)
         {
             CreateChatListItem(emptyChat.Value, null);
         }
 
-        // Add chats with messages
         foreach (KeyValuePair<string, List<ChatMessage>> chat in chatHistory)
         {
             if (chat.Value.Count > 0)
@@ -804,6 +733,8 @@ public class PrivateChat : MonoBehaviourPunCallbacks
 
     private void CreateChatListItem(Player chatPartner, ChatMessage lastMessage)
     {
+        if (chatPartner == null) return;
+
         GameObject chatListItem = Instantiate(chatListItemPrefab, chatListTransform);
         Image avatarImage = chatListItem.transform.Find("Avatar").GetComponent<Image>();
         Image statusCircle = chatListItem.transform.Find("Avatar/Status Circle/Status Circle").GetComponent<Image>();
@@ -811,13 +742,11 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         TextMeshProUGUI messageText = chatListItem.transform.Find("Last Message").GetComponent<TextMeshProUGUI>();
         TextMeshProUGUI timeText = chatListItem.transform.Find("Time").GetComponent<TextMeshProUGUI>();
 
-        // Set avatar
         if (chatPartner.CustomProperties.TryGetValue("avatar", out object avatarObj) && avatarObj is int avatarIndex)
         {
             avatarImage.sprite = Participants.Instance.avatarSprites[avatarIndex];
         }
 
-        // Set availability status
         UpdateParticipantStatus(statusCircle, chatPartner);
 
         nameText.text = chatPartner.NickName;
@@ -839,23 +768,42 @@ public class PrivateChat : MonoBehaviourPunCallbacks
 
     private string GetChatId(Player player)
     {
-        int localPlayerId = PhotonNetwork.LocalPlayer.ActorNumber;
-        int otherPlayerId = player.ActorNumber;
-        return localPlayerId < otherPlayerId ? $"{localPlayerId}-{otherPlayerId}" : $"{otherPlayerId}-{localPlayerId}";
+        string localUserId = PhotonNetwork.LocalPlayer.UserId;
+        string otherPlayerId = player.UserId;
+
+        return string.CompareOrdinal(localUserId, otherPlayerId) < 0
+            ? $"{localUserId}-{otherPlayerId}"
+            : $"{otherPlayerId}-{localUserId}";
     }
 
     private Player GetPlayerFromChatId(string chatId)
     {
         string[] playerIds = chatId.Split('-');
-        int otherPlayerId = int.Parse(playerIds[0]) == PhotonNetwork.LocalPlayer.ActorNumber ? int.Parse(playerIds[1]) : int.Parse(playerIds[0]);
-        return PhotonNetwork.CurrentRoom.GetPlayer(otherPlayerId);
+        string localUserId = PhotonNetwork.LocalPlayer.UserId;
+        string otherPlayerId = playerIds[0] == localUserId ? playerIds[1] : playerIds[0];
+
+        foreach (Player player in PhotonNetwork.PlayerList)
+        {
+            if (player.UserId == otherPlayerId)
+            {
+                return player;
+            }
+        }
+        return null;
+    }
+
+    private void ClearMessageUI()
+    {
+        foreach (Transform child in messageListContent)
+        {
+            Destroy(child.gameObject);
+        }
     }
 
     public override void OnPlayerPropertiesUpdate(Player targetPlayer, ExitGames.Client.Photon.Hashtable changedProps)
     {
         if (changedProps.ContainsKey("AvailabilityStatus"))
         {
-            // Update status in new chat window
             GameObject participantObj = GameObject.Find($"Participant_{targetPlayer.ActorNumber}");
             if (participantObj != null)
             {
@@ -863,10 +811,8 @@ public class PrivateChat : MonoBehaviourPunCallbacks
                 UpdateParticipantStatus(statusCircle, targetPlayer);
             }
 
-            // Update status in chat list
             UpdateChatList();
 
-            // Update status in current chat window if it's the current chat partner
             if (currentChatPartner == targetPlayer)
             {
                 Image statusCircle = chatWindowAvatar.transform.Find("Status Circle/Status Circle").GetComponent<Image>();
@@ -877,10 +823,8 @@ public class PrivateChat : MonoBehaviourPunCallbacks
 
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
-        if (isShuttingDown)
-        {
-            return; // Stop execution immediately.
-        }
+        if (isShuttingDown) return;
+
         string chatId = GetChatId(otherPlayer);
         chatHistory.Remove(chatId);
         emptyChatPartners.Remove(chatId);
@@ -891,92 +835,46 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         {
             HandleDepartedChatPartner();
         }
-        //DeleteChat(otherPlayer);
-        //photonView.RPC("DeleteChatRPC", RpcTarget.All, otherPlayer.ActorNumber);
     }
 
     private void HandleDepartedChatPartner()
     {
-        if (chatWindowContent == null || !chatWindowContent.activeSelf)
-        {
-            return;
-        }
+        if (chatWindowContent == null || !chatWindowContent.activeSelf) return;
 
-        // Change the title to indicate the user is offline.
         chatWindowTitle.text = $"{currentChatPartner.NickName} (Offline)";
 
-        // Disable the message input field and send button.
         if (messageInput != null)
         {
-            messageInput.interactable = false;
-            messageInput.text = ""; // Clear any text
-
-            // Find the placeholder text and change it.
             var placeholder = messageInput.placeholder.GetComponent<TMP_Text>();
             if (placeholder != null)
             {
                 placeholder.text = "This user has left the room.";
             }
         }
-
-        if (sendMessageButton != null)
-        {
-            sendMessageButton.interactable = false;
-        }
-
-        // The chat partner is now gone, so we set the reference to null.
         currentChatPartner = null;
-    }
-
-    private void DeleteChat(Player player)
-    {
-        string chatId = GetChatId(player);
-        chatHistory.Remove(chatId);
-        emptyChatPartners.Remove(chatId);
-        savedInputs.Remove(chatId);
-        UpdateChatList();
-
-        if (currentChatPartner == player)
-        {
-            ShowChatList();
-        }
-    }
-
-    [PunRPC]
-    private void DeleteChatRPC(int playerActorNumber)
-    {
-        Player player = PhotonNetwork.CurrentRoom.GetPlayer(playerActorNumber);
-        if (player != null)
-        {
-            DeleteChat(player);
-        }
     }
 
     public void OnChatInputFieldSelect(string text)
     {
         messageInput.placeholder.gameObject.SetActive(false);
-
         Debug.Log("Input field selected");
     }
 
     public void OnChatInputFieldDeselect(string text)
     {
         Debug.Log("Input field deselected");
-
         messageInput.placeholder.gameObject.SetActive(true);
     }
 
     public void OnSearchInputFieldSelect(string text)
     {
         newChatSearchInput.placeholder.gameObject.SetActive(false);
-
         Debug.Log("Input field selected");
     }
 
     public void OnSearchInputFieldDeselect(string text)
     {
         Debug.Log("Input field deselected");
-
         newChatSearchInput.placeholder.gameObject.SetActive(true);
     }
 
@@ -987,30 +885,23 @@ public class PrivateChat : MonoBehaviourPunCallbacks
 
     private IEnumerator SmoothScrollToBottom()
     {
-        // Wait for end of frame to ensure all layout calculations are complete
         yield return new WaitForEndOfFrame();
 
         Canvas.ForceUpdateCanvases();
         ScrollRect scrollRect = messageListContent.GetComponentInParent<ScrollRect>();
         if (scrollRect != null)
         {
-            // Get the actual content height after layout update
-            RectTransform contentRectTransform = messageListContent as RectTransform;
-            float contentHeight = contentRectTransform.sizeDelta.y;
-
             float duration = 0.3f;
             float elapsedTime = 0f;
             Vector2 startPosition = scrollRect.normalizedPosition;
             Vector2 targetPosition = new Vector2(0, 0);
 
-            // Wait one more frame to ensure scroll values are updated
             yield return null;
 
             while (elapsedTime < duration)
             {
                 elapsedTime += Time.deltaTime;
                 float t = elapsedTime / duration;
-                // Use smooth step for more natural easing
                 t = t * t * (3f - 2f * t);
                 scrollRect.normalizedPosition = Vector2.Lerp(startPosition, targetPosition, t);
                 yield return null;
@@ -1019,14 +910,44 @@ public class PrivateChat : MonoBehaviourPunCallbacks
         }
     }
 
-    // Add OpenChatWithPlayer method
     public void OpenChatWithPlayer(Player targetPlayer)
     {
-        if (!isOpen)
+        if (targetPlayer == null)
         {
-            OpenMenu();
+            Debug.LogError("OpenChatWithPlayer called with a null targetPlayer.");
+            return;
         }
+        string chatId = GetChatId(targetPlayer);
+
+        if (!chatHistory.ContainsKey(chatId) && !emptyChatPartners.ContainsKey(chatId))
+        {
+            Debug.Log($"Creating new empty chat session with {targetPlayer.NickName}");
+            emptyChatPartners[chatId] = targetPlayer;
+        }
+
+        UpdateChatList();
         ShowChatWindow(targetPlayer);
+    }
+
+    private void UpdateChatMessagesUI()
+    {
+        ClearMessageUI();
+
+        string chatId = GetChatId(currentChatPartner);
+        if (chatHistory.ContainsKey(chatId))
+        {
+            DateTime lastDate = DateTime.MinValue;
+            foreach (ChatMessage message in chatHistory[chatId])
+            {
+                if (message.Timestamp.Date != lastDate.Date)
+                {
+                    CreateDateSeparator(message.Timestamp);
+                    lastDate = message.Timestamp.ToLocalTime();
+                }
+                CreateMessageObject(message);
+            }
+        }
+        ScrollToBottom();
     }
 }
 

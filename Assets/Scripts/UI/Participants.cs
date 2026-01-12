@@ -14,30 +14,18 @@ public class Participants : MonoBehaviourPunCallbacks
 
     private PhotonView _photonView;
 
-    public float hoverDuration = 0.2f;
-    public RectTransform menuPanel;
-    public float slideDuration = 0.5f;
-    public float slideDistance = 400f;
-    public Button toggleButton;
-    public Button closeButton;
+    public float hoverDuration = 0.2f; // Kept for list item animations
     public GameObject participantPrefab;
     public Transform participantListContent;
     public Sprite[] avatarSprites;
     public TMP_InputField searchInputField;
-    //public Image searchFrameImage;
 
-    private float currentAlpha = 0f;
-    private bool isHovering = false;
-    [HideInInspector]
-    public bool isOpen = false;
-    private bool isAnimating = false;
     private Dictionary<int, GameObject> participantObjects = new Dictionary<int, GameObject>();
-    //private Color searchFrameOriginalColor;
 
     [System.Runtime.InteropServices.DllImport("__Internal")]
     private static extern void SetButtonHoverState(string gameObjectName, bool isHovering);
 
-    // Add these new fields to the Participants class
+    // Profile fields
     public GameObject mainPlayerProfilePrefab;
     public GameObject otherPlayerProfilePrefab;
     private PlayerProfile currentProfile;
@@ -47,9 +35,9 @@ public class Participants : MonoBehaviourPunCallbacks
 
     public TextMeshProUGUI participantsNumberText;
 
-    // Add these fields at the top of the Participants class
-    public GameObject waveNotificationPrefab; // Assign this in inspector
-    public Transform notificationParent; // Assign this in inspector - where notifications will appear
+    // Notification fields
+    public GameObject waveNotificationPrefab;
+    public Transform notificationParent;
     private List<GameObject> activeNotifications = new List<GameObject>();
 
     private void Start()
@@ -57,12 +45,10 @@ public class Participants : MonoBehaviourPunCallbacks
         Instance = this;
         _photonView = GetComponent<PhotonView>();
 
-        toggleButton.onClick.AddListener(ToggleMenu);
+        // Removed ToggleButton listener and MenuPanel positioning
 
         searchInputField.onSelect.AddListener(OnSearchInputFieldSelect);
         searchInputField.onDeselect.AddListener(OnSearchInputFieldDeselect);
-
-        menuPanel.anchoredPosition = menuPanel.anchoredPosition + new Vector2(slideDistance, 0);
 
         // Initialize the participant list
         UpdateParticipantList();
@@ -77,14 +63,13 @@ public class Participants : MonoBehaviourPunCallbacks
 
     private void Update()
     {
-
+        // Logic for closing the Profile Window if clicking outside of it
         if (Input.GetMouseButtonDown(0) && currentProfile != null)
         {
             Vector2 mousePosition = Input.mousePosition;
             bool clickedOutside = !RectTransformUtility.RectangleContainsScreenPoint(currentProfile.GetComponent<RectTransform>(), mousePosition, null);
 
-            // Check if the click is on the menu panel
-            bool clickedOnMenuPanel = RectTransformUtility.RectangleContainsScreenPoint(menuPanel, mousePosition, null);
+            // Removed check for MenuPanel click
 
             bool clickedOutsideEmoji = true;
             if (currentProfile.gameObject.name == "Main Player Profile(Clone)")
@@ -99,7 +84,6 @@ public class Participants : MonoBehaviourPunCallbacks
                 if (currentProfile.transform.Find("Message Bar/Icon").GetComponent<EmojiChatButtonController>().isExpanded)
                 {
                     clickedOutsideEmoji = !RectTransformUtility.RectangleContainsScreenPoint(currentProfile.transform.Find("Message Bar/Icon").GetComponent<EmojiChatButtonController>().emojiSelectionWindow.GetComponent<RectTransform>(), mousePosition, null);
-
                 }
             }
 
@@ -109,6 +93,8 @@ public class Participants : MonoBehaviourPunCallbacks
             }
         }
     }
+
+    // Removed ToggleMenu() and SlideMenu()
 
     private void CloseCurrentProfile()
     {
@@ -187,58 +173,6 @@ public class Participants : MonoBehaviourPunCallbacks
         }
     }
 
-    public void ToggleMenu()
-    {
-        if (!isOpen)
-        {
-            GetComponent<ButtonHoverEffect>().enabled = false;
-            GetComponent<ButtonHoverEffect>().targetImage.color = new Color(GetComponent<ButtonHoverEffect>().targetImage.color.r, GetComponent<ButtonHoverEffect>().targetImage.color.g, GetComponent<ButtonHoverEffect>().targetImage.color.b, 100f);
-
-            // Close participants menu if open
-            PrivateChat privateMenu = PrivateChat.Instance;
-            if (privateMenu != null && privateMenu.isOpen)
-            {
-                privateMenu.ToggleMenu();
-            }
-        }
-        else
-        {
-            GetComponent<ButtonHoverEffect>().enabled = true;
-            //GetComponent<ButtonHoverEffect>().isHovering = false;
-        }
-
-        if (!isAnimating)
-        {
-            CloseCurrentProfile();
-            StartCoroutine(SlideMenu(!isOpen));
-        }
-    }
-
-    private IEnumerator SlideMenu(bool open)
-    {
-        isAnimating = true;
-        toggleButton.interactable = false;
-        closeButton.interactable = false;
-
-        float elapsedTime = 0f;
-        Vector2 startPosition = menuPanel.anchoredPosition;
-        Vector2 endPosition = open ? startPosition - new Vector2(slideDistance, 0) : startPosition + new Vector2(slideDistance, 0);
-
-        while (elapsedTime < slideDuration)
-        {
-            elapsedTime += Time.deltaTime;
-            float t = Mathf.SmoothStep(0, 1, elapsedTime / slideDuration);
-            menuPanel.anchoredPosition = Vector2.Lerp(startPosition, endPosition, t);
-            yield return null;
-        }
-
-        menuPanel.anchoredPosition = endPosition;
-        isOpen = open;
-        isAnimating = false;
-        toggleButton.interactable = true;
-        closeButton.interactable = true;
-    }
-
     public void UpdateParticipantList()
     {
         // Store current availability statuses
@@ -289,8 +223,39 @@ public class Participants : MonoBehaviourPunCallbacks
         // Set avatar
         Image avatarImage = participantObj.transform.Find("Avatar").GetComponent<Image>();
         int avatarIndex = isLocalPlayer ? PlayerDataManager.PlayerAvatar : (int)player.CustomProperties["avatar"];
-        avatarImage.sprite = avatarSprites[avatarIndex];
 
+        if (avatarSprites == null || avatarSprites.Length == 0)
+        {
+            Debug.LogError("The 'avatarSprites' array is empty. Please assign sprites in the Unity Inspector.");
+            avatarImage.color = Color.magenta;
+        }
+        else
+        {
+            avatarIndex = 0; // Default to the first avatar.
+
+            if (isLocalPlayer)
+            {
+                avatarIndex = PlayerDataManager.PlayerAvatar;
+            }
+            else if (player.CustomProperties.ContainsKey("avatar") && player.CustomProperties["avatar"] is int)
+            {
+                avatarIndex = (int)player.CustomProperties["avatar"];
+            }
+            else
+            {
+                Debug.LogWarning($"Player {player.NickName} does not have a valid 'avatar' custom property. Defaulting to index 0.");
+            }
+
+            if (avatarIndex >= 0 && avatarIndex < avatarSprites.Length)
+            {
+                avatarImage.sprite = avatarSprites[avatarIndex];
+            }
+            else
+            {
+                Debug.LogError($"Avatar index {avatarIndex} is out of bounds for player {player.NickName}. Defaulting to index 0.");
+                avatarImage.sprite = avatarSprites[0];
+            }
+        }
         // Set name
         TextMeshProUGUI nameText = participantObj.transform.Find("Name").GetComponent<TextMeshProUGUI>();
         string playerName = player.NickName;
@@ -312,12 +277,7 @@ public class Participants : MonoBehaviourPunCallbacks
         // Handle Wave and Message buttons
         Transform waveButton = participantObj.transform.Find("WaveButton");
         Transform messageButton = participantObj.transform.Find("MessageButton");
-        /*PlayerController pc = GameManager.Instance.GetPlayerByActorNumber(player.ActorNumber);
-        pc.GetComponent<PlayerInfo>().player = player;
-        pc.GetComponent<PlayerInfo>().isLocalPlayer = isLocalPlayer;
-        pc.GetComponent<PlayerInfo>().waveBtnAction = () => SendWave(player);
-        pc.GetComponent<PlayerInfo>().messageBtnAction = () => OpenMessageBox(player);
-        pc.GetComponent<PlayerInfo>().requestBtnAction = () => SendRequest(player);*/
+
         foreach (PlayerController playerController in Object.FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
         {
             if (player.NickName == playerController.nicknameText.text)
@@ -338,12 +298,6 @@ public class Participants : MonoBehaviourPunCallbacks
 
             if (!isLocalPlayer)
             {
-                /*PlayerController pc = GameManager.Instance.GetPlayerByActorNumber(player.ActorNumber);
-                pc.GetComponent<PlayerInfo>().player = player;
-                pc.GetComponent<PlayerInfo>().isLocalPlayer = isLocalPlayer;
-                pc.GetComponent<PlayerInfo>().waveBtnAction = () => SendWave(player);
-                pc.GetComponent<PlayerInfo>().messageBtnAction = () => OpenMessageBox(player);
-                pc.GetComponent<PlayerInfo>().requestBtnAction = () => SendRequest(player);*/
                 // Add wave button listener
                 Button waveBtn = waveButton.GetComponent<Button>();
                 if (waveBtn != null)
@@ -358,17 +312,9 @@ public class Participants : MonoBehaviourPunCallbacks
                     msgBtn.onClick.AddListener(() => OpenMessageBox(player));
                 }
             }
-            /*else {
-                PlayerController pc = GameManager.Instance.myPlayer;
-                pc.GetComponent<PlayerInfo>().player = player;
-                pc.GetComponent<PlayerInfo>().isLocalPlayer = isLocalPlayer;
-                pc.GetComponent<PlayerInfo>().waveBtnAction = () => SendWave(player);
-                pc.GetComponent<PlayerInfo>().messageBtnAction = () => OpenMessageBox(player);
-                pc.GetComponent<PlayerInfo>().requestBtnAction = () => SendRequest(player);
-            }*/
         }
 
-        // Add hover effect to participant object
+        // Add hover effect to participant object (list item)
         Image backgroundImage = participantObj.GetComponent<Image>();
         if (backgroundImage != null)
         {
@@ -532,7 +478,15 @@ public class Participants : MonoBehaviourPunCallbacks
         {
             TextMeshProUGUI nameText = participantObj.transform.Find("Name").GetComponent<TextMeshProUGUI>();
             bool matchesSearch = nameText.text.ToLower().Contains(searchText);
-            StartCoroutine(SmoothSetActive(participantObj, matchesSearch));
+            if (participantObj.activeInHierarchy)
+            {
+                StartCoroutine(SmoothSetActive(participantObj, matchesSearch));
+            }
+            else
+            {
+                // If the object is inactive, just set its state directly.
+                participantObj.SetActive(matchesSearch);
+            }
         }
     }
 
@@ -595,18 +549,16 @@ public class Participants : MonoBehaviourPunCallbacks
     public void OnSearchInputFieldSelect(string text)
     {
         searchInputField.placeholder.gameObject.SetActive(false);
-
         Debug.Log("Input field selected");
     }
 
     public void OnSearchInputFieldDeselect(string text)
     {
         Debug.Log("Input field deselected");
-
         searchInputField.placeholder.gameObject.SetActive(true);
     }
 
-    // Add new methods for wave and message functionality
+    // Wave and Message functionality
     private void SendWave(Player targetPlayer)
     {
         if (targetPlayer == null)
@@ -855,7 +807,7 @@ public class Participants : MonoBehaviourPunCallbacks
     }
 }
 
-// New class for participant hover effect
+// Participant hover effect for list items (kept as it is for UI elements inside the list)
 public class ParticipantHoverEffect : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 {
     public Image targetImage;

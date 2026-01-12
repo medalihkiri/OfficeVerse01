@@ -14,7 +14,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Auth.unity
     guid: f020f0ab9cf7b0b4b98060723e7aed71
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/GameScene.unity
     guid: 2cda990e2423bbf4892e6590ba056729
   - enabled: 1
@@ -26,6 +26,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/GameScene 2.unity
     guid: dc21f55f1d98e24469c2b629f889d37e
+  - enabled: 1
+    path: Assets/Scenes/ClassRoom.unity
+    guid: 890ba2d09383a5a429570f1b97a566e1
   m_configObjects:
     com.unity.addressableassets: {fileID: 11400000, guid: fa8fbb048c35f3a4ba7922a6d4283662,
       type: 2}

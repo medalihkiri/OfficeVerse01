@@ -4,21 +4,38 @@ using UnityEngine.UI;
 
 public class ButtonHoverEffect : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 {
+    [Header("Hover Settings")]
     public bool cursorHoverEffect = true;
     public Image targetImage;
     public float hoverDuration = 0.2f;
 
+    [Header("Tooltip Content")]
     [Tooltip("Text to display when hovering over the button")]
     public string tooltipText = "";
+    [SerializeField] private GameObject tooltipPrefab;
 
-    [Tooltip("If true, tooltip appears above the button; if false, below")]
-    public bool tooltipAbove = false;
+    [Header("Tooltip Positioning")]
+    public TooltipPosition position = TooltipPosition.Top;
 
-    [Tooltip("Horizontal offset for the tooltip")]
-    public float tooltipHorizontalOffset = 0f;
+    [Tooltip("Distance from the button edge")]
+    public float spacing = 10f;
 
+    [Tooltip("Fine-tune the position (X, Y)")]
+    public Vector2 additionalOffset = Vector2.zero;
 
-    [SerializeField] private GameObject tooltipPrefab;  // Assign your tooltip prefab here
+    // Advanced settings only shown/used if 'Custom' is selected
+    [Header("Custom Settings (Only if Position is Custom)")]
+    public Vector2 customAnchor = new Vector2(0.5f, 1f);
+    public Vector2 customPivot = new Vector2(0.5f, 0f);
+
+    public enum TooltipPosition
+    {
+        Top,
+        Bottom,
+        Left,
+        Right,
+        Custom
+    }
 
     private float currentAlpha = 0f;
     [HideInInspector] public bool isHovering = false;
@@ -66,17 +83,64 @@ public class ButtonHoverEffect : MonoBehaviour, IPointerEnterHandler, IPointerEx
     {
         if (tooltipRect == null) return;
 
-        // Position horizontally at center with offset
-        tooltipRect.anchorMin = new Vector2(0.5f, tooltipAbove ? 1 : 0);
-        tooltipRect.anchorMax = new Vector2(0.5f, tooltipAbove ? 1 : 0);
-        tooltipRect.pivot = new Vector2(0.5f, tooltipAbove ? 0 : 1);
+        Vector2 finalAnchorMin = Vector2.zero;
+        Vector2 finalAnchorMax = Vector2.zero;
+        Vector2 finalPivot = Vector2.zero;
+        Vector2 basePosition = Vector2.zero;
 
+        switch (position)
+        {
+            case TooltipPosition.Top:
+                // Anchor to Top-Center of button
+                finalAnchorMin = new Vector2(0.5f, 1);
+                finalAnchorMax = new Vector2(0.5f, 1);
+                // Pivot at Bottom-Center of tooltip
+                finalPivot = new Vector2(0.5f, 0);
+                basePosition = new Vector2(0, spacing);
+                break;
 
-        // Position vertically based on tooltipAbove setting with horizontal offset
-        float spacing = 10f; // Space between button and tooltip
-        float verticalPosition = tooltipAbove ? spacing : -spacing;
+            case TooltipPosition.Bottom:
+                // Anchor to Bottom-Center of button
+                finalAnchorMin = new Vector2(0.5f, 0);
+                finalAnchorMax = new Vector2(0.5f, 0);
+                // Pivot at Top-Center of tooltip
+                finalPivot = new Vector2(0.5f, 1);
+                basePosition = new Vector2(0, -spacing);
+                break;
 
-        tooltipRect.anchoredPosition = new Vector2(tooltipHorizontalOffset, verticalPosition);
+            case TooltipPosition.Left:
+                // Anchor to Left-Center of button
+                finalAnchorMin = new Vector2(0, 0.5f);
+                finalAnchorMax = new Vector2(0, 0.5f);
+                // Pivot at Right-Center of tooltip
+                finalPivot = new Vector2(1, 0.5f);
+                basePosition = new Vector2(-spacing, 0);
+                break;
+
+            case TooltipPosition.Right:
+                // Anchor to Right-Center of button
+                finalAnchorMin = new Vector2(1, 0.5f);
+                finalAnchorMax = new Vector2(1, 0.5f);
+                // Pivot at Left-Center of tooltip
+                finalPivot = new Vector2(0, 0.5f);
+                basePosition = new Vector2(spacing, 0);
+                break;
+
+            case TooltipPosition.Custom:
+                finalAnchorMin = customAnchor;
+                finalAnchorMax = customAnchor;
+                finalPivot = customPivot;
+                basePosition = Vector2.zero;
+                break;
+        }
+
+        // Apply calculated values
+        tooltipRect.anchorMin = finalAnchorMin;
+        tooltipRect.anchorMax = finalAnchorMax;
+        tooltipRect.pivot = finalPivot;
+
+        // Apply Spacing + Custom Offsets
+        tooltipRect.anchoredPosition = basePosition + additionalOffset;
     }
 
     private void Update()
@@ -106,6 +170,8 @@ public class ButtonHoverEffect : MonoBehaviour, IPointerEnterHandler, IPointerEx
         if (tooltipInstance != null)
         {
             tooltipInstance.SetActive(true);
+            // Optional: Reposition on show in case layout changed
+            // PositionTooltip(); 
         }
 #if UNITY_WEBGL && !UNITY_EDITOR
         SetButtonHoverState(gameObject.name, true);

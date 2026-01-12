@@ -6,6 +6,7 @@ using Photon.Realtime;
 using System.Collections.Generic;
 using agora_gaming_rtc;
 using TMPro;
+using System.Linq;
 
 public class GameManager : MonoBehaviourPunCallbacks
 {
@@ -24,7 +25,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     public CameraController cameraController;
     public GameObject interactionMessage;
     public TextMeshProUGUI interactionMessageText;
-    
+
     public GameObject screenShareObject;
     public VideoSurface screenShareSurface;
     public TextMeshProUGUI screenSharePlayerNameText;
@@ -57,32 +58,29 @@ public class GameManager : MonoBehaviourPunCallbacks
             {
                 GameChatManager.SP.OnJoinedRoom();
             }
-            // Synchronize screen share states when entering the game
+
             foreach (PlayerController player in otherPlayers)
             {
-                if (player != null && player.view != null && 
-                    player.view.Owner.CustomProperties.TryGetValue("isScreenSharing", out object isSharing) && 
+                if (player != null && player.view != null &&
+                    player.view.Owner.CustomProperties.TryGetValue(PlayerController.IS_SCREEN_SHARING_PROP, out object isSharing) &&
                     (bool)isSharing)
                 {
                     bool shouldShowScreenShare = ShouldShowScreenShare(player);
                     SetScreenShareObjectState(
-                        (uint)player.view.ViewID, 
-                        player.view.Owner.NickName, 
+                        (uint)player.view.ViewID,
+                        player.view.Owner.NickName,
                         shouldShowScreenShare
                     );
                 }
             }
 
-
-
-            // Also check local player's screen share
-            if (myPlayer.view.Owner.CustomProperties.TryGetValue("isScreenSharing", out object localIsSharing) && 
+            if (myPlayer.view.Owner.CustomProperties.TryGetValue(PlayerController.IS_SCREEN_SHARING_PROP, out object localIsSharing) &&
                 (bool)localIsSharing)
             {
                 bool shouldShowScreenShare = ShouldShowScreenShare(myPlayer);
                 SetScreenShareObjectState(
-                    (uint)myPlayer.view.ViewID, 
-                    myPlayer.view.Owner.NickName, 
+                    (uint)myPlayer.view.ViewID,
+                    myPlayer.view.Owner.NickName,
                     shouldShowScreenShare
                 );
             }
@@ -100,7 +98,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         if (myPlayer.view.ViewID == playerViewId)
         {
-            return; // Screen sharer always sees their own screen share
+            return;
         }
 
         screenShareObject.SetActive(isVisible);
@@ -117,23 +115,16 @@ public class GameManager : MonoBehaviourPunCallbacks
         }
     }
 
-    private bool IsInSameRoom(PlayerController otherPlayer)
-    {
-        return SpatialRoom.PlayersInRooms.TryGetValue(myPlayer.view.Owner.ActorNumber, out int myRoomId) &&
-               SpatialRoom.PlayersInRooms.TryGetValue(otherPlayer.view.Owner.ActorNumber, out int otherRoomId) &&
-               myRoomId == otherRoomId;
-    }
-
     private PlayerController GetPlayerByViewId(uint viewId)
     {
         if (myPlayer.view.ViewID == viewId) return myPlayer;
-        return otherPlayers.Find(p => p.view.ViewID == viewId);
+        return otherPlayers.Find(p => p != null && p.view.ViewID == viewId);
     }
 
     public PlayerController GetPlayerByActorNumber(int actorNumber)
     {
         if (myPlayer.view.Owner.ActorNumber == actorNumber) return myPlayer;
-        return otherPlayers.Find(p => p.view.Owner.ActorNumber == actorNumber);
+        return otherPlayers.Find(p => p != null && p.view.Owner.ActorNumber == actorNumber);
     }
 
     public void JoinAgoraChannel()
@@ -141,8 +132,6 @@ public class GameManager : MonoBehaviourPunCallbacks
         if (agoraClientManager != null && agoraClientManager.mRtcEngine != null)
         {
             agoraClientManager.JoinChannel();
-            
-            // Initialize audio states for all existing players
             foreach (PlayerController player in otherPlayers)
             {
                 if (player != null && player.view != null)
@@ -155,20 +144,15 @@ public class GameManager : MonoBehaviourPunCallbacks
 
     public override void OnJoinedRoom()
     {
-
-
-        //StartGame();
         base.OnJoinedRoom();
 
-        // Check for active screen shares when joining
         foreach (Player player in PhotonNetwork.CurrentRoom.Players.Values)
         {
-            if (player.CustomProperties.TryGetValue("isScreenSharing", out object isScreenSharing) && (bool)isScreenSharing)
+            if (player.CustomProperties.TryGetValue(PlayerController.IS_SCREEN_SHARING_PROP, out object isScreenSharing) && (bool)isScreenSharing)
             {
                 PlayerController sharingPlayer = GetPlayerByActorNumber(player.ActorNumber);
                 if (sharingPlayer != null)
                 {
-                    // Force update screen share state and visibility
                     sharingPlayer.OnReceiveScreenShareState(true);
                     SetScreenShareObjectState(
                         (uint)sharingPlayer.view.ViewID,
@@ -176,7 +160,6 @@ public class GameManager : MonoBehaviourPunCallbacks
                         true
                     );
 
-                    // Ensure the screen share surface is properly configured
                     screenShareSurface.SetForUser((uint)sharingPlayer.view.ViewID);
                     screenShareSurface.SetEnable(true);
                     screenShareSurface.SetVideoSurfaceType(AgoraVideoSurfaceType.RawImage);
@@ -187,18 +170,17 @@ public class GameManager : MonoBehaviourPunCallbacks
 
     public override void OnLeftRoom()
     {
-        StartCoroutine(
-            LoadSceneAfterLeftRoom());
+        StartCoroutine(LoadSceneAfterLeftRoom());
     }
 
     public override void OnPlayerEnteredRoom(Player newPlayer)
     {
         base.OnPlayerEnteredRoom(newPlayer);
-        //Debug.Log("Joined a room.");
         UpdateTotalPlayers();
         Debug.Log($"EVENT: Player '{newPlayer.NickName}' entered room. Total players: {PhotonNetwork.CurrentRoom.PlayerCount}");
 
-        // If I'm the new player, initialize my states to off and sync with existing players
+        StartCoroutine(AddNewPlayerController(newPlayer));
+
         if (PhotonNetwork.LocalPlayer == newPlayer)
         {
             if (myPlayer != null)
@@ -208,7 +190,6 @@ public class GameManager : MonoBehaviourPunCallbacks
                 myPlayer.SendScreenShareState(false);
             }
 
-            // Force sync states for all existing players
             foreach (Player player in PhotonNetwork.CurrentRoom.Players.Values)
             {
                 if (player != newPlayer)
@@ -216,8 +197,7 @@ public class GameManager : MonoBehaviourPunCallbacks
                     PlayerController otherPlayer = GetPlayerByActorNumber(player.ActorNumber);
                     if (otherPlayer != null)
                     {
-                        // Force UI updates for all states
-                        if (player.CustomProperties.TryGetValue("isAudioEnabled", out object isAudioEnabled))
+                        if (player.CustomProperties.TryGetValue(PlayerController.IS_AUDIO_ENABLED_PROP, out object isAudioEnabled))
                         {
                             otherPlayer.OnReceiveAudioState((bool)isAudioEnabled);
                             otherPlayer.playerAudioObject.SetActive((bool)isAudioEnabled);
@@ -227,115 +207,81 @@ public class GameManager : MonoBehaviourPunCallbacks
                     }
                 }
             }
-            foreach (PlayerController player in otherPlayers)
-            {
-                if (player != null && player.view != null && !player.view.IsMine)
-                {
-                    // Sync video state
-                    if (player.view.Owner.CustomProperties.TryGetValue("isVideoEnabled", out object isVideoEnabled))
-                    {
-                        player.OnReceiveVideoState((bool)isVideoEnabled);
-                    }
-                    else
-                    {
-                        player.OnReceiveVideoState(false);
-                    }
-
-                    // Sync audio state
-                    if (player.view.Owner.CustomProperties.TryGetValue("isAudioEnabled", out object isAudioEnabled))
-                    {
-                        player.OnReceiveAudioState((bool)isAudioEnabled);
-                    }
-                    else
-                    {
-                        player.OnReceiveAudioState(false);
-                    }
-
-                    // Sync screen share state
-                    if (player.view.Owner.CustomProperties.TryGetValue("isScreenSharing", out object isScreenSharing))
-                    {
-                        player.OnReceiveScreenShareState((bool)isScreenSharing);
-                        if ((bool)isScreenSharing)
-                        {
-                            UpdateScreenShareVisibility(player);
-                        }
-                    }
-                    else
-                    {
-                        player.OnReceiveScreenShareState(false);
-                    }
-                }
-            }
-        }
-        // If I'm an existing player, send my current states to the new player
-        else if (myPlayer != null)
-        {
-            // Send video state
-            if (myPlayer.view.Owner.CustomProperties.TryGetValue("isVideoEnabled", out object isVideoEnabled))
-            {
-                myPlayer.OnReceiveVideoState((bool)isVideoEnabled);
-            }
-            else
-            {
-                myPlayer.OnReceiveVideoState(false);
-            }
-
-            // Send audio state
-            if (myPlayer.view.Owner.CustomProperties.TryGetValue("isAudioEnabled", out object isAudioEnabled))
-            {
-                myPlayer.OnReceiveAudioState((bool)isAudioEnabled);
-            }
-            else
-            {
-                myPlayer.OnReceiveAudioState(false);
-            }
-
-            // Send screen share state
-            if (myPlayer.view.Owner.CustomProperties.TryGetValue("isScreenSharing", out object isScreenSharing))
-            {
-                myPlayer.OnReceiveScreenShareState((bool)isScreenSharing);
-            }
-            else
-            {
-                myPlayer.OnReceiveScreenShareState(false);
-            }
         }
     }
 
+    private IEnumerator AddNewPlayerController(Player newPlayer)
+    {
+        GameObject playerGameObject = null;
+        float timeout = Time.time + 5f;
+
+        while (playerGameObject == null && Time.time < timeout)
+        {
+            foreach (var pv in FindObjectsOfType<PhotonView>())
+            {
+                if (pv.OwnerActorNr == newPlayer.ActorNumber)
+                {
+                    playerGameObject = pv.gameObject;
+                    break;
+                }
+            }
+            yield return null;
+        }
+
+        if (playerGameObject != null)
+        {
+            PlayerController newController = playerGameObject.GetComponent<PlayerController>();
+            if (newController != null && !otherPlayers.Contains(newController))
+            {
+                otherPlayers.Add(newController);
+                newController.SyncAudioState(true);
+                newController.SyncVideoState();
+                newController.SyncScreenShareState();
+            }
+        }
+        else
+        {
+            Debug.LogError($"Failed to find PlayerController for new player '{newPlayer.NickName}'.");
+        }
+    }
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
         base.OnPlayerLeftRoom(otherPlayer);
         UpdateTotalPlayers();
-
-        // Log the event for clear debugging.
         Debug.Log($"<color=orange>[OnPlayerLeftRoom]</color> Event for player '{otherPlayer.NickName}' (ActorNr: {otherPlayer.ActorNumber}).");
 
-        // Step 1: Clean up game-specific UI and state. This is our responsibility.
-        if (otherPlayer.CustomProperties.TryGetValue("isScreenSharing", out object isSharing) && (bool)isSharing)
+        if (otherPlayer == null) return;
+
+        if (otherPlayer.CustomProperties.TryGetValue(PlayerController.IS_SCREEN_SHARING_PROP, out object isSharing) && (bool)isSharing)
         {
             Debug.Log($"'{otherPlayer.NickName}' was screen sharing. Deactivating screen share UI.");
             screenShareObject.SetActive(false);
             screenShareSurface.SetEnable(false);
         }
 
-        // Step 2: Clean up our C# list references. This is also our responsibility.
-        // This prevents NullReferenceExceptions in our own game logic.
-        PlayerController departingPlayerController = otherPlayers.Find(p => p != null && p.view != null && p.view.OwnerActorNr == otherPlayer.ActorNumber);
+        // Find the PlayerController instance for the departing player
+        PlayerController departingPlayerController = otherPlayers.FirstOrDefault(p => p != null && p.view != null && p.view.OwnerActorNr == otherPlayer.ActorNumber);
+
         if (departingPlayerController != null)
         {
-            // We are only removing the reference from our list. We are NOT destroying the GameObject.
+            // --- MODIFICATION START: GHOST PLAYER CLEANUP ---
+            // As the Master Client, we are responsible for cleaning up the objects of departed players.
+            if (PhotonNetwork.IsMasterClient)
+            {
+                Debug.Log($"<color=cyan>[MasterClient]</color> Player '{otherPlayer.NickName}' left. Destroying their objects.");
+                PhotonNetwork.Destroy(departingPlayerController.gameObject);
+            }
+            // --- MODIFICATION END ---
+
+            // Remove the reference from our local list regardless.
             otherPlayers.Remove(departingPlayerController);
             Debug.Log($"<color=green>SUCCESS:</color> Removed '{otherPlayer.NickName}' from the 'otherPlayers' C# list.");
         }
-
-        // Step 3: DO NOTHING ELSE.
-        // We will NOT call PhotonNetwork.DestroyPlayerObjects() or any custom RPC.
-        // Photon's automatic cleanup (thanks to the default RoomOption 'CleanupCacheOnLeave = true')
-        // is already handling the destruction of the networked GameObject.
-        // Calling it manually was causing a race condition and the error you observed.
-        Debug.Log("Object destruction is now handled automatically by Photon. No manual cleanup required.");
+        else
+        {
+            Debug.LogWarning($"Could not find PlayerController for departing player '{otherPlayer.NickName}' to clean up.");
+        }
     }
-
 
     private IEnumerator LoadSceneAfterLeftRoom()
     {
@@ -360,13 +306,9 @@ public class GameManager : MonoBehaviourPunCallbacks
             ContactFilter2D contactFilter2D = new ContactFilter2D();
             contactFilter2D.useTriggers = false;
             int hitsCount = Physics2D.CircleCast(spawnPoint, 0.2f, Vector2.zero, contactFilter2D, hits);
-            if (hitsCount == 0)
-            {
-                break;
-            }
-            spawnPoint = new Vector2(Random.Range(minX, maxX), Random.Range(minY, maxY)); // Modify this to add some variation to the spawn point.
+            if (hitsCount == 0) break;
+            spawnPoint = new Vector2(Random.Range(minX, maxX), Random.Range(minY, maxY));
             currentTry++;
-            Debug.Log("Bebra");
         }
 
         if (currentTry < maxTries)
@@ -394,10 +336,12 @@ public class GameManager : MonoBehaviourPunCallbacks
         UpdateTotalPlayers();
     }
 
-
     public void LeaveRoom()
     {
-        PhotonNetwork.LeaveRoom();
+        if (PhotonNetwork.InRoom)
+        {
+            PhotonNetwork.LeaveRoom();
+        }
         SceneManager.LoadScene("Auth");
     }
 
@@ -415,60 +359,49 @@ public class GameManager : MonoBehaviourPunCallbacks
 
         if (myPlayer.view.ViewID == uid)
         {
-            // Screen sharer always sees their own screen share
             screenShareObject.SetActive(enable);
             screenShareSurface.SetForUser(0);
             screenShareSurface.SetEnable(enable);
             screenSharePlayerNameText.text = $"{name} is screen sharing.";
-            
-            // Hide meeting view button if screen share is stopped
-            if (!enable)
-            {
-                userControlsUI?.HideMeetingViewButton();
-            }
-            // Show meeting view button if screen share is restarted in map view
-            else if (userControlsUI != null && userControlsUI.isMapViewActive)
-            {
-                userControlsUI.meetingViewButton.gameObject.SetActive(true);
-            }
+
+            if (!enable) userControlsUI?.HideMeetingViewButton();
+            else if (userControlsUI != null && userControlsUI.isMapViewActive) userControlsUI.meetingViewButton.gameObject.SetActive(true);
+
             return;
         }
 
         bool shouldShowScreenShare = ShouldShowScreenShare(sharingPlayer);
         screenShareObject.SetActive(enable && shouldShowScreenShare);
-        if (enable)
+
+        if (enable && shouldShowScreenShare)
         {
             screenShareSurface.SetForUser(uid);
-            screenShareSurface.SetEnable(shouldShowScreenShare);
+            screenShareSurface.SetEnable(true);
+            screenShareSurface.SetVideoSurfaceType(AgoraVideoSurfaceType.RawImage);
             screenSharePlayerNameText.text = $"{name} is screen sharing.";
-            
-            // Ensure Agora video surface is properly configured
-            if (shouldShowScreenShare)
-            {
-                screenShareSurface.SetVideoSurfaceType(AgoraVideoSurfaceType.RawImage);
-                screenShareSurface.SetEnable(true);
-            }
         }
 
-        // Always handle meeting view button visibility for all players
         if (userControlsUI != null && userControlsUI.isMapViewActive)
         {
-            // Show meeting view button if screen share is started or restarted
-            if (enable)
-            {
-                userControlsUI.meetingViewButton.gameObject.SetActive(true);
-            }
-            // Hide meeting view button if screen share is stopped
-            else
-            {
-                userControlsUI.HideMeetingViewButton();
-            }
+            userControlsUI.meetingViewButton.gameObject.SetActive(enable);
+        }
+        if (!enable)
+        {
+            userControlsUI?.HideMeetingViewButton();
+        }
+    }
+
+    public void UpdateVideoVisibility(PlayerController videoPlayer)
+    {
+        if (videoPlayer.view.Owner.CustomProperties.TryGetValue(PlayerController.IS_VIDEO_ENABLED_PROP, out object isEnabled) && (bool)isEnabled)
+        {
+            videoPlayer.OnReceiveVideoState(true);
         }
     }
 
     public void UpdateScreenShareVisibility(PlayerController sharingPlayer)
     {
-        if (sharingPlayer.view.Owner.CustomProperties.TryGetValue("isScreenSharing", out object isSharing) && (bool)isSharing)
+        if (sharingPlayer.view.Owner.CustomProperties.TryGetValue(PlayerController.IS_SCREEN_SHARING_PROP, out object isSharing) && (bool)isSharing)
         {
             SetScreenShareObjectState(
                 (uint)sharingPlayer.view.ViewID,
@@ -478,15 +411,44 @@ public class GameManager : MonoBehaviourPunCallbacks
         }
     }
 
+    public bool ShouldShowVideo(PlayerController videoPlayer)
+    {
+        // --- BROADCAST LOGIC ---
+        if (videoPlayer.view.Owner.CustomProperties.TryGetValue(PlayerController.IS_BROADCASTING_PROP, out object isBroadcasting) && (bool)isBroadcasting)
+        {
+            return true; // If broadcasting, always show video.
+        }
+
+        // --- EXISTING ROOM LOGIC ---
+        bool viewerInRoom = SpatialRoom.PlayersInAnyRoom.TryGetValue(myPlayer.view.Owner.ActorNumber, out bool isViewerInRoom) && isViewerInRoom;
+        bool videoPlayerInRoom = SpatialRoom.PlayersInAnyRoom.TryGetValue(videoPlayer.view.Owner.ActorNumber, out bool isVideoPlayerInRoom) && isVideoPlayerInRoom;
+
+        if (!viewerInRoom && !videoPlayerInRoom) return true;
+
+        if (viewerInRoom && videoPlayerInRoom)
+        {
+            return SpatialRoom.PlayersInRooms.TryGetValue(myPlayer.view.Owner.ActorNumber, out int viewerRoomId) &&
+                   SpatialRoom.PlayersInRooms.TryGetValue(videoPlayer.view.Owner.ActorNumber, out int sharerRoomId) &&
+                   viewerRoomId == sharerRoomId;
+        }
+
+        return false;
+    }
+
     public bool ShouldShowScreenShare(PlayerController sharingPlayer)
     {
+        // --- BROADCAST LOGIC ---
+        if (sharingPlayer.view.Owner.CustomProperties.TryGetValue(PlayerController.IS_BROADCASTING_PROP, out object isBroadcasting) && (bool)isBroadcasting)
+        {
+            return true; // If broadcasting, always show screen share.
+        }
+
+        // --- EXISTING ROOM LOGIC ---
         bool viewerInRoom = SpatialRoom.PlayersInAnyRoom.TryGetValue(myPlayer.view.Owner.ActorNumber, out bool isViewerInRoom) && isViewerInRoom;
         bool sharerInRoom = SpatialRoom.PlayersInAnyRoom.TryGetValue(sharingPlayer.view.Owner.ActorNumber, out bool isSharerInRoom) && isSharerInRoom;
 
-        // If both players are not in any room, screen share is visible
         if (!viewerInRoom && !sharerInRoom) return true;
 
-        // If both players are in rooms, they must be in the same room
         if (viewerInRoom && sharerInRoom)
         {
             return SpatialRoom.PlayersInRooms.TryGetValue(myPlayer.view.Owner.ActorNumber, out int viewerRoomId) &&
@@ -494,17 +456,13 @@ public class GameManager : MonoBehaviourPunCallbacks
                    viewerRoomId == sharerRoomId;
         }
 
-        // If one player is in a room and the other isn't, screen share is not visible
         return false;
     }
 
     public void SetInteractionMessage(bool enable, string text = "")
     {
+        if (isShuttingDown || interactionMessage == null) return;
 
-        if (isShuttingDown || interactionMessage == null)
-        {
-            return;
-        }
         interactionMessage.SetActive(enable);
         interactionMessageText.text = text;
     }

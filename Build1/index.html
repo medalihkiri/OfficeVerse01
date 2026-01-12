@@ -1,130 +1,1166 @@
 <!DOCTYPE html>
 <html lang="en-us">
-
 <head>
-	<meta charset="utf-8">
-	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-	<title>Office Dar Blockchain</title>
-	<link rel="shortcut icon" href="TemplateData/favicon.ico">
-	<link rel="stylesheet" href="AgoraWebSDK/style.css">
-	<link rel="stylesheet" href="TemplateData/style.css">
-	<script src="AgoraWebSDK/libs/agora-extension-virtual-background.js"></script>
-	<script src="AgoraWebSDK/libs/virtualbackground.js"></script>
-	<script src="AgoraWebSDK/libs/databuilder.js"></script>
-	<script src="AgoraWebSDK/libs/clientmanager.js"></script>
-	<script src="AgoraWebSDK/libs/wglwrapper.js"></script>
-	<script src="AgoraWebSDK/libs/audioeffects.js"></script>
-	<script src="AgoraWebSDK/libs/eventmanager.js"></script>
-	<script src="AgoraWebSDK/libs/engineglobals.js"></script>
-	<script src="AgoraWebSDK/libs/watermark.js"></script>
-	<script src="AgoraWebSDK/libs/customvideo.js"></script>
-	<script src="AgoraWebSDK/libs/agorachannel.js"></script>
-	<script src="AgoraWebSDK/libs/multichannel.js"></script>
-	<script src="AgoraWebSDK/libs/audiosystem.js"></script>
-	<script src="AgoraWebSDK/libs/testing.js"></script>
-	<script src="AgoraWebSDK/libs/agorautils.js"></script>
-	<script src="AgoraWebSDK/libs/audiomixing.js"></script>
-	<script src="AgoraWebSDK/agorartcenginev2.js"></script>
-	<script src="AgoraRTC_N.js"></script>
-	<script src="AgoraWebSDK/libs/spatial-audio-main.js" type="module"></script>
-	<script src="AgoraWebSDK/vendor/jquery.min.js"></script>
-	<script src="AgoraWebSDK/vendor/materialize.min.js"></script>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <meta name="theme-color" content="#080808">
+    <title>OfficeVerse // OV MODULE</title>
+
+    <!-- FONTS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@700&family=Space+Grotesk:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <!-- UNITY & AGORA STYLES (Preserved) -->
+    <link rel="shortcut icon" href="TemplateData/favicon.ico">
+    <link rel="stylesheet" href="AgoraWebSDK/style.css">
+    <link rel="stylesheet" href="TemplateData/style.css">
+
+    <!-- AGORA SCRIPTS (Preserved) -->
+    <script src="AgoraWebSDK/libs/agora-extension-virtual-background.js"></script>
+    <script src="AgoraWebSDK/libs/virtualbackground.js"></script>
+    <script src="AgoraWebSDK/libs/databuilder.js"></script>
+    <script src="AgoraWebSDK/libs/clientmanager.js"></script>
+    <script src="AgoraWebSDK/libs/wglwrapper.js"></script>
+    <script src="AgoraWebSDK/libs/audioeffects.js"></script>
+    <script src="AgoraWebSDK/libs/eventmanager.js"></script>
+    <script src="AgoraWebSDK/libs/engineglobals.js"></script>
+    <script src="AgoraWebSDK/libs/watermark.js"></script>
+    <script src="AgoraWebSDK/libs/customvideo.js"></script>
+    <script src="AgoraWebSDK/libs/agorachannel.js"></script>
+    <script src="AgoraWebSDK/libs/multichannel.js"></script>
+    <script src="AgoraWebSDK/libs/audiosystem.js"></script>
+    <script src="AgoraWebSDK/libs/testing.js"></script>
+    <script src="AgoraWebSDK/libs/agorautils.js"></script>
+    <script src="AgoraWebSDK/libs/audiomixing.js"></script>
+    <script src="AgoraWebSDK/agorartcenginev2.js"></script>
+    <script src="AgoraRTC_N.js"></script>
+    <script src="AgoraWebSDK/libs/spatial-audio-main.js" type="module"></script>
+    <script src="AgoraWebSDK/vendor/jquery.min.js"></script>
+    <script src="AgoraWebSDK/vendor/materialize.min.js"></script>
+
+    <!-- MOBILE VIEWPORT FIX -->
+    <script>
+        function setVh() {
+            let vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
+        }
+        window.addEventListener('resize', setVh);
+        setVh();
+    </script>
+
+    <style>
+        /* --- INDUSTRIAL / SWISS DESIGN SYSTEM --- */
+        :root {
+            --bg-dark: #080808;
+            --bg-panel: #050505;
+            --grid-line: rgba(255, 255, 255, 0.06);
+            --accent-primary: #D0E3E8; /* Medical Blue */
+            --accent-glow: rgba(208, 227, 232, 0.1);
+            --accent-alert: #FF3B30;
+            --accent-success: #00E676; /* Green for Ready state */
+            --font-pixel: 'Pixelify Sans', sans-serif;
+            --font-display: 'Space Grotesk', sans-serif;
+            --font-code: 'JetBrains Mono', monospace;
+            --text-main: #F0F0F0;
+            --text-muted: #666666;
+            --border-light: 1px solid rgba(255,255,255,0.15);
+            --border-heavy: 2px solid #D0E3E8;
+            --nav-height: 70px;
+        }
+
+        /* --- RESET & BASE --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: var(--font-display);
+            overflow: hidden;
+            height: 100vh;
+            height: calc(var(--vh, 1vh) * 100);
+            width: 100vw;
+            -webkit-font-smoothing: antialiased;
+            cursor: crosshair;
+        }
+
+            body.game-mode {
+                cursor: default;
+            }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        /* --- SCROLLBARS --- */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+        }
+
+            ::-webkit-scrollbar-thumb:hover {
+                background: var(--accent-primary);
+            }
+
+        ::selection {
+            background: var(--accent-primary);
+            color: #000;
+        }
+
+        /* --- TECHNICAL GRID BG --- */
+        .tech-grid {
+            position: fixed;
+            inset: 0;
+            background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+            background-size: 50px 50px;
+            background-position: center;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0.8;
+            transform: translateZ(0); /* Hardware Accel */
+        }
+
+        /* --- LANDING SCROLL LAYER --- */
+        #landing-layer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            z-index: 50;
+            overflow-y: auto;
+            overflow-x: hidden;
+            background: transparent;
+            scroll-behavior: smooth;
+        }
+
+        /* --- NAVIGATION --- */
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 40px;
+            height: var(--nav-height);
+            border-bottom: var(--border-light);
+            background: rgba(8, 8, 8, 0.95);
+            backdrop-filter: blur(12px);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+
+        .brand-badge {
+            font-family: var(--font-code);
+            font-weight: 700;
+            font-size: 0.8rem;
+            color: var(--text-main);
+            letter-spacing: -0.5px;
+            text-transform: uppercase;
+        }
+
+        .status-ind {
+            font-family: var(--font-code);
+            font-size: 0.65rem;
+            border: 1px solid var(--text-muted);
+            padding: 5px 10px;
+            border-radius: 2px;
+            color: var(--accent-primary);
+            background: rgba(0,0,0,0.5);
+        }
+
+        /* --- HERO SECTION --- */
+        .hero-section {
+            position: relative;
+            min-height: 92vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 20;
+            padding-top: var(--nav-height);
+            pointer-events: none;
+        }
+
+            .hero-section > * {
+                pointer-events: auto;
+            }
+
+        .hero-eyebrow {
+            font-family: var(--font-pixel);
+            font-size: clamp(8rem, 25vw, 20rem);
+            line-height: 0.75;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 30px;
+            letter-spacing: -0.08em;
+            text-shadow: 4px 4px 0px rgba(255,255,255,0.05);
+        }
+
+        .hero-sub {
+            font-family: var(--font-code);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            max-width: 450px;
+            margin-bottom: 50px;
+            letter-spacing: 0.5px;
+            line-height: 1.7;
+            background: rgba(5,5,5,0.8);
+            padding: 15px;
+            border-left: 2px solid var(--accent-primary);
+            backdrop-filter: blur(4px);
+        }
+
+        /* --- INDUSTRIAL BUTTONS --- */
+        .btn-industrial {
+            background: transparent;
+            color: var(--text-main);
+            font-family: var(--font-code);
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 18px 45px;
+            border: 1px solid var(--text-main);
+            cursor: wait; /* Default to wait */
+            text-transform: uppercase;
+            transition: all 0.25s cubic-bezier(0.215, 0.610, 0.355, 1.000);
+            position: relative;
+            overflow: hidden;
+            letter-spacing: 1px;
+            opacity: 0.7;
+        }
+
+            .btn-industrial::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: var(--text-main);
+                z-index: -1;
+                transform: scaleX(0);
+                transform-origin: right;
+                transition: transform 0.25s cubic-bezier(0.215, 0.610, 0.355, 1.000);
+            }
+
+            /* Active State (Added dynamically) */
+            .btn-industrial.ready {
+                cursor: pointer;
+                opacity: 1;
+                border-color: var(--accent-primary);
+                color: #fff;
+                box-shadow: 0 0 20px rgba(208, 227, 232, 0.2);
+                animation: pulse-ready 2s infinite;
+            }
+
+                .btn-industrial.ready:hover {
+                    color: #000;
+                    background: var(--accent-primary);
+                }
+
+        @keyframes pulse-ready {
+            0% {
+                box-shadow: 0 0 0 0 rgba(208, 227, 232, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(208, 227, 232, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(208, 227, 232, 0);
+            }
+        }
+
+        /* Scroll Indicator */
+        .scroll-hint {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: var(--font-code);
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            animation: float 2s infinite ease-in-out;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            letter-spacing: 2px;
+        }
+
+            .scroll-hint::after {
+                content: '↓';
+                font-size: 1rem;
+                color: var(--accent-primary);
+            }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translate(-50%, 0);
+                opacity: 0.5;
+            }
+
+            50% {
+                transform: translate(-50%, 8px);
+                opacity: 1;
+            }
+        }
+
+        /* --- MANUAL / TUTORIAL GRID --- */
+        .instruction-section {
+            position: relative;
+            z-index: 30;
+            background: var(--bg-dark);
+            border-top: var(--border-light);
+            padding: 100px 40px;
+        }
+
+        .section-header {
+            font-family: var(--font-display);
+            font-size: 1.5rem;
+            margin-bottom: 60px;
+            text-transform: uppercase;
+            letter-spacing: -0.5px;
+            border-left: 3px solid var(--accent-primary);
+            padding-left: 20px;
+            color: var(--text-main);
+        }
+
+        .manual-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1px;
+            background-color: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+
+        .step-card {
+            background: var(--bg-panel);
+            padding: 40px;
+            min-height: 280px;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.2s;
+            position: relative;
+        }
+
+            .step-card:hover {
+                background: #111;
+            }
+
+        .step-number {
+            font-family: var(--font-display);
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+            line-height: 1;
+            margin-bottom: 25px;
+            opacity: 0.6;
+        }
+
+        .step-title {
+            font-family: var(--font-code);
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            color: var(--text-main);
+            letter-spacing: 0.5px;
+        }
+
+        .step-desc {
+            font-family: var(--font-display);
+            font-size: 1rem;
+            line-height: 1.5;
+            color: #999;
+            margin-bottom: 30px;
+            font-weight: 300;
+        }
+
+        .step-meta {
+            margin-top: auto;
+            padding-top: 15px;
+            border-top: 1px dashed rgba(255,255,255,0.15);
+            font-family: var(--font-code);
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* --- FOOTER --- */
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            border-top: var(--border-light);
+            background: #000;
+            position: relative;
+            z-index: 30;
+        }
+
+        .footer-cell {
+            padding: 60px 40px;
+            border-right: var(--border-light);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 350px;
+        }
+
+            .footer-cell:last-child {
+                border-right: none;
+            }
+
+        .f-header {
+            font-family: var(--font-code);
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            margin-bottom: 25px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .f-logo {
+            font-family: var(--font-pixel);
+            font-size: 6rem;
+            line-height: 0.8;
+            font-weight: 700;
+            letter-spacing: -4px;
+            margin-top: auto;
+            color: #1a1a1a;
+            user-select: none;
+        }
+
+        .social-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .tag-box {
+            border: 1px solid #333;
+            color: var(--text-main);
+            padding: 10px 20px;
+            font-family: var(--font-code);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.2s;
+            cursor: pointer;
+            text-decoration: none;
+            background: rgba(255,255,255,0.02);
+        }
+
+            .tag-box:hover {
+                background: var(--text-main);
+                color: #000;
+                border-color: var(--text-main);
+            }
+
+        .catalog-box {
+            border: 1px solid #fff;
+            padding: 25px;
+            background: #000;
+            max-width: 320px;
+        }
+
+        .catalog-header {
+            border-bottom: 1px solid #fff;
+            padding-bottom: 12px;
+            margin-bottom: 15px;
+            font-family: var(--font-code);
+            font-size: 0.7rem;
+            letter-spacing: 1px;
+        }
+
+        .catalog-body {
+            font-size: 0.85rem;
+            line-height: 1.5;
+            margin-bottom: 25px;
+            color: #ccc;
+        }
+
+        .catalog-footer {
+            background: var(--accent-primary);
+            color: #000;
+            padding: 12px;
+            font-family: var(--font-code);
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        /* --- ZONES & SPRITES --- */
+        #world-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            min-height: 100vh;
+            pointer-events: none;
+            z-index: 10;
+            overflow: hidden;
+        }
+
+        #hud-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .zone {
+            position: absolute;
+            border: 1px dashed rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .zone-label {
+            position: absolute;
+            top: -20px;
+            left: 0;
+            font-family: var(--font-code);
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+        }
+
+        .zone.active {
+            border-style: solid;
+            border-color: var(--accent-primary);
+            background: rgba(208, 227, 232, 0.03);
+        }
+
+            .zone.active .zone-label {
+                color: var(--accent-primary);
+            }
+
+        #zone-p1 {
+            width: 140px;
+            height: 120px;
+            left: 12%;
+            top: 30vh;
+        }
+
+        #zone-p2 {
+            width: 140px;
+            height: 120px;
+            left: 12%;
+            top: 55vh;
+            border-color: rgba(255, 59, 48, 0.3);
+        }
+
+            #zone-p2 .zone-label {
+                color: var(--accent-alert);
+                opacity: 0.6;
+            }
+
+        #zone-broadcast {
+            width: 350px;
+            height: 300px;
+            right: 12%;
+            top: 30vh;
+        }
+
+        .sprite {
+            width: 32px;
+            height: 32px;
+            position: absolute;
+            background-image: url('TemplateData/avatar.png');
+            background-repeat: no-repeat;
+            image-rendering: pixelated;
+            will-change: transform;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.8));
+        }
+
+        .char-red {
+            filter: hue-rotate(-50deg) saturate(1.5) contrast(1.1);
+        }
+
+        .char-blue {
+            filter: hue-rotate(180deg) saturate(1.2) brightness(1.2);
+        }
+
+        .char-yellow {
+            filter: hue-rotate(40deg) saturate(1.8) brightness(1.1);
+        }
+
+        .char-white {
+            filter: grayscale(100%) brightness(1.5);
+        }
+
+        .char-dark {
+            filter: invert(0.9) hue-rotate(180deg);
+        }
+
+        .bubble {
+            position: absolute;
+            top: -35px;
+            left: 50%;
+            transform: translateX(-50%) translateY(5px);
+            background: #fff;
+            color: #000;
+            border: 1px solid #000;
+            font-family: var(--font-code);
+            font-size: 0.6rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 5px 8px;
+            white-space: nowrap;
+            opacity: 0;
+            transition: all 0.15s;
+            box-shadow: 3px 3px 0px rgba(0,0,0,1);
+            z-index: 200;
+        }
+
+            .bubble.visible {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+
+        /* --- UNITY GAME LAYER --- */
+        #game-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            visibility: hidden;
+            background: #000;
+            opacity: 0;
+            transition: visibility 0s 0.8s, opacity 0.8s ease;
+        }
+
+            #game-layer.active {
+                visibility: visible;
+                opacity: 1;
+                transition: opacity 0.5s ease;
+            }
+
+        #unity-mobile-warning {
+            display: none;
+            background: var(--accent-alert);
+            color: white;
+            padding: 15px;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 10000;
+            text-align: center;
+            font-family: var(--font-code);
+        }
+
+        @media (max-width: 768px) {
+            .hero-eyebrow {
+                font-size: 25vw;
+            }
+
+            .manual-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-cell {
+                border-right: none;
+                border-bottom: var(--border-light);
+                padding: 40px 20px;
+            }
+
+            #hud-layer {
+                opacity: 0;
+            }
+        }
+    </style>
 </head>
 
-<body style="margin: 0; overflow: hidden;">
+<body>
 
-	<div class="webgl-content" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0;">
-        <div class="centered" style="width: 100%; height: 100%;">
-            <div id="unity-container" style="width: 100%; height: 100%;"></div>
-				<canvas id="unity-canvas"></canvas>
-				<div id="unity-loading-bar">
-					<div id="unity-logo"></div>
-					<div id="unity-progress-bar-empty">
-						<div id="unity-progress-bar-full"></div>
-					</div>
-				</div>
-				<div id="unity-mobile-warning">
-					WebGL builds are not supported on mobile devices.
-				</div>
-			</div>
+    <!-- BACKGROUND GRID -->
+    <div class="tech-grid"></div>
+
+    <!-- LANDING PAGE CONTENT -->
+    <div id="landing-layer">
+        <nav>
+            <div class="brand-badge">OfficeVerse <span style="color:#444; margin-left:10px;">// OV MODULE</span></div>
+            <div class="status-ind" id="online-counter">● ONLINE</div>
+        </nav>
+
+        <!-- DECORATIVE ACTORS LAYER -->
+        <div id="world-container"></div>
+
+        <!-- HERO SECTION -->
+        <section class="hero-section">
+            <div class="hero-eyebrow">OV</div>
+            <div class="hero-sub">
+                <span>OfficeVerse // Web Portal</span>
+                A virtual workspace for your browser.<br>
+                Resources loading in background...
+            </div>
+
+            <!-- BUTTON ACTS AS PROGRESS INDICATOR INITIALLY -->
+            <button id="enter-button" class="btn-industrial" onclick="handlePlay()">
+                Enter System <span id="btn-status" style="color:rgba(255,255,255,0.4); margin-left:5px;">[WAIT]</span>
+            </button>
+
+            <!-- VISUAL HUD ELEMENTS -->
+            <div id="hud-layer">
+                <div class="zone" id="zone-p1"><div class="zone-label">PVT // 01</div></div>
+                <div class="zone" id="zone-p2"><div class="zone-label">ADMIN // RESTRICTED</div></div>
+                <div class="zone" id="zone-broadcast"><div class="zone-label">HUB // AUDIO ENABLED</div></div>
+            </div>
+
+            <div class="scroll-hint" onclick="document.getElementById('manual').scrollIntoView({behavior: 'smooth'})">
+                HOW IT WORKS
+            </div>
+        </section>
+
+        <!-- TUTORIAL / PROTOCOL MANUAL -->
+        <section class="instruction-section" id="manual">
+            <div class="section-header">Instruction Manual</div>
+
+            <div class="manual-grid">
+                <!-- STEP 1 -->
+                <div class="step-card">
+                    <div class="step-number">01</div>
+                    <div class="step-title">Join a Room</div>
+                    <div class="step-desc">
+                        Enter a unique <strong>Room Name</strong> and <strong>Password</strong> to start.
+                        If the room doesn't exist, we will create it for you automatically.
+                    </div>
+                    <div class="step-meta">
+                        <span>Input: Text</span>
+                        <span>Status: Easy</span>
+                    </div>
+                </div>
+
+                <!-- STEP 2 -->
+                <div class="step-card">
+                    <div class="step-number">02</div>
+                    <div class="step-title">Move Around</div>
+                    <div class="step-desc">
+                        Pick an avatar you like.
+                        Use your <strong>Arrow Keys</strong> or <strong>W/A/S/D</strong> to walk around.
+                        On mobile? Just tap the screen to move.
+                    </div>
+                    <div class="step-meta">
+                        <span>Control: Keyboard</span>
+                        <span>Mobile: Touch</span>
+                    </div>
+                </div>
+
+                <!-- STEP 3 -->
+                <div class="step-card">
+                    <div class="step-number">03</div>
+                    <div class="step-title">Talk to People</div>
+                    <div class="step-desc">
+                        Walk close to someone to hear them and see their video.
+                        Walk away to stop hearing them.
+                        <strong>Private Zones</strong> are for private meetings only.
+                    </div>
+                    <div class="step-meta">
+                        <span>Audio: Spatial</span>
+                        <span>Video: Auto</span>
+                    </div>
+                </div>
+
+                <!-- STEP 4 -->
+                <div class="step-card">
+                    <div class="step-number">04</div>
+                    <div class="step-title">Use Tools</div>
+                    <div class="step-desc">
+                        Press <strong>TAB</strong> to open your toolkit.
+                        You can take notes, chat privately, or ask our AI assistant for help.
+                    </div>
+                    <div class="step-meta">
+                        <span>Tools: Chat / Notes</span>
+                        <span>AI: Enabled</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FOOTER & CONTACT -->
+        <div class="footer-grid">
+            <div class="footer-cell">
+                <div>
+                    <div class="f-header">Contact Me:</div>
+                    <div class="social-row">
+                        <!-- DIRECT EMAIL WITH PRE-FILLED SUBJECT -->
+                        <a href="mailto:medali.hkiri@esprit.tn?subject=OfficeVerse%20//%20Inquiry&body=Hello%20Med%20Ali%2C%0A%0AI%20am%20interested%20in%20OfficeVerse..." class="tag-box">
+                            EMAIL <span>↗</span>
+                        </a>
+
+                        <!-- GITHUB -->
+                        <a href="https://github.com/medalihkiri" target="_blank" rel="noopener noreferrer" class="tag-box">
+                            GITHUB <span>↗</span>
+                        </a>
+
+                        <!-- LINKEDIN -->
+                        <a href="https://www.linkedin.com/in/med-ali-hkiri-1148a8239/" target="_blank" rel="noopener noreferrer" class="tag-box">
+                            LINKEDIN <span>↗</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="f-logo">OV*</div>
+            </div>
+
+            <div class="footer-cell" style="align-items: center; justify-content: center; background: #050505;">
+                <div class="catalog-box">
+                    <div class="catalog-header">SYSTEM STATUS: ONLINE</div>
+                    <div class="catalog-body">
+                        ALL SYSTEMS GO.<br>
+                        READY FOR USER INPUT.<br>
+                        PROCEED WITH CAUTION.
+                    </div>
+                    <div class="catalog-footer">
+                        DarBlockChain-MedAliHkiri__&copy;2025
+                    </div>
+                </div>
+                <div style="margin-top: 40px; font-family: var(--font-code); font-size: 0.6rem; color: #444;">
+                    DESIGN & DEV BY MED ALI HKIRI ■ ■
+                </div>
+            </div>
         </div>
     </div>
 
-	<canvas id="inMem_Canvas" height="450" width="450" style="display: none;"></canvas>
-	<canvas id="myCanvas" height="450" width="450" style="display: none;"></canvas>
+    <!-- UNITY CONTAINER -->
+    <div id="game-layer">
+        <div class="webgl-content" style="width: 100%; height: 100%;">
+            <div id="unity-container" style="width: 100%; height: 100%;"></div>
+            <canvas id="unity-canvas" style="width: 100%; height: 100%; display:block;"></canvas>
+            <div id="unity-mobile-warning">MOBILE DETECTED</div>
+        </div>
+        <div>
+            <div id="client-stats" class="stats"></div>
+            <div class="row video-group">
+                <div class="col"><p id="local-player-name" class="player-name"></p><div class="player-with-stats"><div id="local-player" class="player"></div><div id="local-stats" class="stream-stats stats"></div></div></div>
+                <div class="w-100"></div>
+                <div class="col"><div id="remote-playerlist"></div></div>
+            </div>
+        </div>
+    </div>
 
-	<div>
-		<div id="client-stats" class="stats"></div>
-		<div class="row video-group">
-		  <div class="col">
-			<p id="local-player-name" class="player-name"></p>
-			<div class="player-with-stats">
-			  <div id="local-player" class="player"></div>
-			  <div id="local-stats" class="stream-stats stats"></div>
-			</div>
-		  </div>
-		  <div class="w-100"></div>
-		  <div class="col">
-			<div id="remote-playerlist"></div>
-		  </div>
-		</div>
-	  </div>
+    <!-- UTILS -->
+    <canvas id="inMem_Canvas" height="450" width="450" style="display: none;"></canvas>
+    <canvas id="myCanvas" height="450" width="450" style="display: none;"></canvas>
 
-	<script>
-		var unityInstance;
-		var mainCanvas = document.getElementById("myCanvas");
-		var mainContext = mainCanvas.getContext('2d');
-		var inMemCanvas = document.getElementById("inMem_Canvas");
-		var inMemContext = inMemCanvas.getContext('2d');
-		var canvasWidth = mainCanvas.width;
-		var canvasHeight = mainCanvas.height;
-		var angle = 0;
+    <!-- UNITY LOADER -->
+    <script>
+        var unityInstance = null;
+        var isUnityReady = false;
 
-		var buildUrl = "Build";
-		var loaderUrl = buildUrl + "/Build1.loader.js";
-		var config = {
-			dataUrl: buildUrl + "/c087b9f1c93e583c7f63f0bd6e748f51.data",
-			frameworkUrl: buildUrl + "/f4c0b6d8cb0d872c9cd5af2e840254a7.js",
-			codeUrl: buildUrl + "/87bd9fb0d2e182bcdf3666c21ad50fb5.wasm",
-        streamingAssetsUrl: "StreamingAssets",
-			companyName: "DefaultCompany",
-			productName: "Office Dar Blockchain",
-			productVersion: "0.1",
-		};
+        var buildUrl = "Build";
+        var loaderUrl = buildUrl + "/Build1.loader.js";
+        var config = {
+            dataUrl: buildUrl + "/1e0fa4aa292b4263458090b2bab4eda7.data",
+            frameworkUrl: buildUrl + "/99228c7ae19d7f7c19c17ccbb0198484.js",
+            codeUrl: buildUrl + "/5c1f8e7f49d41164fcb1b559bd6796c0.wasm",
+            streamingAssetsUrl: "StreamingAssets",
+            companyName: "DarBlockChain-MedAliHkiri",
+            productName: "OfficeVerse",
+            productVersion: "0.1",
+        };
 
-		var container = document.querySelector("#unity-container");
-		var canvas = document.querySelector("#unity-canvas");
-		var loadingBar = document.querySelector("#unity-loading-bar");
-		var progressBarFull = document.querySelector("#unity-progress-bar-full");
-		var mobileWarning = document.querySelector("#unity-mobile-warning");
+        const container = document.querySelector("#unity-container");
+        const canvas = document.querySelector("#unity-canvas");
+        const btnStatus = document.getElementById("btn-status");
+        const enterBtn = document.getElementById("enter-button");
 
-		if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-			container.className = "unity-mobile";
-			config.devicePixelRatio = 1;
-			mobileWarning.style.display = "block";
-			setTimeout(() => {
-				mobileWarning.style.display = "none";
-			}, 5000);
-		} else {
-			canvas.style.width = "100%";
-			canvas.style.height = "100%";
-		}
-		loadingBar.style.display = "block";
+        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+            container.className = "unity-mobile";
+            config.devicePixelRatio = 1;
+            document.getElementById("unity-mobile-warning").style.display = "block";
+        }
 
-		var script = document.createElement("script");
-		script.src = loaderUrl;
-		script.onload = () => {
-			createUnityInstance(canvas, config, (progress) => {
-				progressBarFull.style.width = 100 * progress + "%";
-			}).then((unityInstance2) => {
-				unityInstance = unityInstance2;
-				loadingBar.style.display = "none";
-			}).catch((message) => {
-				alert(message);
-			});
-		};
-		document.body.appendChild(script);
-	</script>
+        // Trigger transition to Game Layer
+        function handlePlay() {
+            if (!isUnityReady) return; // Ignore clicks until loaded
+
+            document.getElementById("landing-layer").style.transition = "opacity 0.8s ease";
+            document.getElementById("landing-layer").style.opacity = "0";
+            document.body.classList.add("game-mode");
+
+            setTimeout(() => {
+                document.getElementById("landing-layer").style.display = "none";
+                const game = document.getElementById("game-layer");
+                game.classList.add("active");
+                document.body.style.overflow = "hidden";
+                window.focus();
+                canvas.focus();
+                canvas.click(); // Needed to initialize audio contexts in some browsers
+            }, 800);
+        }
+
+        // LOAD UNITY IMMEDIATELY IN BACKGROUND
+        var script = document.createElement("script");
+        script.src = loaderUrl;
+        script.onload = () => {
+            createUnityInstance(canvas, config, (progress) => {
+                // UPDATE BUTTON TEXT WITH PROGRESS
+                const pct = Math.round(progress * 100);
+                btnStatus.innerText = `[LOADING ${pct}%]`;
+            }).then((instance) => {
+                // UNITY READY
+                unityInstance = instance;
+                isUnityReady = true;
+
+                // UPDATE BUTTON VISUALS
+                btnStatus.innerText = "[ACCESS GRANTED]";
+                enterBtn.classList.add('ready');
+            }).catch((message) => { alert(message); });
+        };
+        document.body.appendChild(script);
+    </script>
+
+    <!-- AVATAR ENGINE & LOGIC (Visual Background) -->
+    <script>
+        (function () {
+            const SPRITE_SIZE = 32;
+            const SCALE = 3;
+            const FRAMES = 3;
+            const PIXELS_FRAME = 15;
+            const ROW_DOWN = 0; const ROW_LEFT = 1; const ROW_RIGHT = 2; const ROW_UP = 3;
+
+            const world = document.getElementById('world-container');
+            const landingLayer = document.getElementById('landing-layer');
+            const lockedZoneIDs = ['zone-p2'];
+
+            class Actor {
+                constructor(x, y, options = {}) {
+                    this.x = x; this.y = y;
+                    this.targetX = x; this.targetY = y;
+                    this.type = options.type || 'static';
+                    this.frame = 1;
+                    this.row = options.row || ROW_DOWN;
+                    this.distAcc = 0;
+                    this.hitLocked = false;
+
+                    this.el = document.createElement('div');
+                    this.el.className = 'sprite';
+                    if (options.skin) this.el.classList.add(options.skin);
+
+                    if (this.type === 'player') {
+                        this.bubble = document.createElement('div');
+                        this.bubble.className = 'bubble';
+                        this.el.appendChild(this.bubble);
+                    } else if (options.text) {
+                        this.bubble = document.createElement('div');
+                        this.bubble.className = 'bubble';
+                        this.bubble.innerText = options.text;
+                        this.el.appendChild(this.bubble);
+                    }
+
+                    if (this.type === 'patrol') {
+                        this.waypoints = options.waypoints || [];
+                        this.wpIndex = 0;
+                        this.patrolSpeed = 0.5;
+                        if (this.waypoints.length > 0) {
+                            this.targetX = this.waypoints[0].x;
+                            this.targetY = this.waypoints[0].y;
+                        }
+                    }
+                    world.appendChild(this.el);
+                }
+
+                update(playerX, playerY) {
+                    if (this.type === 'player') this.move(0.06);
+                    else if (this.type === 'patrol') this.patrolBox();
+
+                    // Proximity
+                    if (this.type !== 'player' && this.bubble) {
+                        const dist = Math.hypot(this.x - playerX, this.y - playerY);
+                        if (dist < 120) {
+                            this.el.style.zIndex = 9999;
+                            this.bubble.classList.add('visible');
+                        } else {
+                            this.el.style.zIndex = Math.floor(this.y);
+                            this.bubble.classList.remove('visible');
+                        }
+                    }
+                    this.draw();
+                }
+
+                moveTo(tx, ty, speed) {
+                    if (this.type === 'player') {
+                        const scrollY = landingLayer.scrollTop;
+                        let blocked = false;
+                        lockedZoneIDs.forEach(id => {
+                            const el = document.getElementById(id);
+                            if (el) {
+                                const r = el.getBoundingClientRect();
+                                const zTop = r.top + scrollY;
+                                const zBottom = r.bottom + scrollY;
+                                if (tx > r.left && tx < r.right && ty > zTop && ty < zBottom) {
+                                    blocked = true;
+                                    el.classList.add('hit');
+                                    setTimeout(() => el.classList.remove('hit'), 200);
+                                }
+                            }
+                        });
+                        this.hitLocked = blocked;
+                        if (blocked) return false;
+                    }
+
+                    const dx = tx - this.x;
+                    const dy = ty - this.y;
+                    const dist = Math.hypot(dx, dy);
+
+                    if (dist > 5) {
+                        const mx = dx * speed;
+                        const my = dy * speed;
+                        this.x += mx; this.y += my;
+                        this.distAcc += Math.hypot(mx, my);
+
+                        if (this.distAcc > PIXELS_FRAME) {
+                            this.frame = (this.frame + 1) % FRAMES;
+                            this.distAcc = 0;
+                        }
+                        if (Math.abs(dx) > Math.abs(dy)) this.row = (dx > 0) ? ROW_RIGHT : ROW_LEFT;
+                        else this.row = (dy > 0) ? ROW_DOWN : ROW_UP;
+                        return false;
+                    }
+                    return true;
+                }
+
+                move(speed) {
+                    if (this.moveTo(this.targetX, this.targetY, speed)) {
+                        this.frame = 1;
+                        if (this.type === 'player') this.row = ROW_DOWN;
+                    }
+                }
+
+                patrolBox() {
+                    const wp = this.waypoints[this.wpIndex];
+                    const dx = wp.x - this.x; const dy = wp.y - this.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > 5) {
+                        const mx = (dx / dist) * this.patrolSpeed;
+                        const my = (dy / dist) * this.patrolSpeed;
+                        this.x += mx; this.y += my;
+                        this.distAcc += Math.abs(this.patrolSpeed);
+                        if (this.distAcc > PIXELS_FRAME * 2) {
+                            this.frame = (this.frame + 1) % FRAMES;
+                            this.distAcc = 0;
+                        }
+                        if (Math.abs(dx) > Math.abs(dy)) this.row = (dx > 0) ? ROW_RIGHT : ROW_LEFT;
+                        else this.row = (dy > 0) ? ROW_DOWN : ROW_UP;
+                    } else {
+                        this.wpIndex = (this.wpIndex + 1) % this.waypoints.length;
+                    }
+                }
+
+                draw() {
+                    let transform = `translate3d(${this.x - 16}px, ${this.y - 16}px, 0) scale(${SCALE})`;
+                    this.el.style.transform = transform;
+                    const bgX = -(this.frame * SPRITE_SIZE);
+                    const bgY = -(this.row * SPRITE_SIZE);
+                    this.el.style.backgroundPosition = `${bgX}px ${bgY}px`;
+                    this.el.style.zIndex = Math.floor(this.y);
+                }
+            }
+
+            // --- INIT ---
+            const cw = window.innerWidth;
+            const ch = window.innerHeight;
+
+            const player = new Actor(cw / 2, ch * 0.75, { type: 'player', skin: 'char-white' });
+            const actors = [player];
+
+            // Background NPCs
+            actors.push(new Actor(cw * 0.1, ch * 0.45, { skin: 'char-red', row: ROW_RIGHT, text: "403 ERROR" }));
+            actors.push(new Actor(cw * 0.75, ch * 0.35, { skin: 'char-blue', row: ROW_LEFT, text: "Sys.Log?" }));
+            actors.push(new Actor(cw * 0.8, ch * 0.38, { skin: 'char-yellow', row: ROW_RIGHT, text: "Affirmative." }));
+
+            const guardWps = [{ x: cw * 0.2, y: ch * 0.3 }, { x: cw * 0.2, y: ch * 0.7 }];
+            actors.push(new Actor(cw * 0.2, ch * 0.3, { type: 'patrol', waypoints: guardWps, skin: 'char-dark', text: "SCANNING" }));
+
+            // --- INPUT ---
+            landingLayer.addEventListener('mousemove', e => {
+                if (document.body.classList.contains('game-mode')) return;
+                player.targetX = e.clientX;
+                player.targetY = e.clientY + landingLayer.scrollTop;
+            });
+
+            const onlineBadge = document.getElementById('online-counter');
+            setInterval(() => {
+                const count = Math.floor(Math.random() * (120 - 80) + 80);
+                onlineBadge.innerHTML = `● ${count} ONLINE`;
+            }, 3000);
+
+            function resizeWorld() {
+                const contentHeight = landingLayer.scrollHeight;
+                world.style.height = contentHeight + 'px';
+            }
+            window.addEventListener('resize', resizeWorld);
+            // Re-calc height on scroll just in case
+            landingLayer.addEventListener('scroll', resizeWorld);
+            setTimeout(resizeWorld, 100);
+
+            // --- ZONE LOGIC ---
+            const zoneConfig = [
+                { id: 'zone-p1', msg: 'PVT DESK // 01' },
+                { id: 'zone-broadcast', msg: 'BROADCAST HUB' }
+            ];
+
+            function loop() {
+                if (document.body.classList.contains('game-mode')) return;
+                actors.forEach(a => a.update(player.x, player.y));
+
+                if (player.hitLocked) {
+                    player.bubble.innerText = "ACCESS DENIED";
+                    player.bubble.classList.add('visible');
+                    player.bubble.style.color = "red";
+                    requestAnimationFrame(loop);
+                    return;
+                } else {
+                    player.bubble.style.color = "black";
+                }
+
+                let active = false;
+                const scrollY = landingLayer.scrollTop;
+                zoneConfig.forEach(z => {
+                    const el = document.getElementById(z.id);
+                    if (!el) return;
+                    const r = el.getBoundingClientRect();
+                    const zTop = r.top + scrollY;
+                    const zBottom = r.bottom + scrollY;
+
+                    if (player.x > r.left && player.x < r.right && player.y > zTop && player.y < zBottom) {
+                        el.classList.add('active');
+                        player.bubble.innerText = z.msg;
+                        player.bubble.classList.add('visible');
+                        active = true;
+                    } else {
+                        el.classList.remove('active');
+                    }
+                });
+
+                if (!active) player.bubble.classList.remove('visible');
+                requestAnimationFrame(loop);
+            }
+            loop();
+        })();
+    </script>
 </body>
-
 </html>

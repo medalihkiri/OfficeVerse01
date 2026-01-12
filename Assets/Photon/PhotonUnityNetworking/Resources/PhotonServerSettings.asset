@@ -19,7 +19,7 @@ MonoBehaviour:
     AppIdVoice: 
     AppVersion: 
     UseNameServer: 1
-    FixedRegion: Eu
+    FixedRegion: eu
     Server: 
     Port: 0
     ProxyServer: 
@@ -81,6 +81,13 @@ MonoBehaviour:
   - ReceiveWaveRPC
   - ReceiveRequestRPC
   - DestroyPlayerRPC
+  - RPC_BeginHold
+  - RPC_EndHoldAndPlace
+  - RPC_InitializeOwner
+  - RPC_SendTransformState
+  - RPC_SetRadiusVisualizer
+  - RPC_SetVisualizerState
+  - RPC_SetTransform
   DisableAutoOpenWizard: 1
   ShowSettings: 1
   DevRegionSetOnce: 1

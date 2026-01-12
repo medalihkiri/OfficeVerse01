@@ -326,8 +326,8 @@ public class GameChatManager : MonoBehaviourPunCallbacks
     private void OnMessageClicked(PointerEventData eventData, TMP_Text textComponent) { /* unchanged */ }
     private void UpdateCursor(TMP_Text textComponent) { /* unchanged */ }
     private void StartCursorCheck(TMP_Text textComponent) { /* unchanged */ }
-   // private IEnumerator CheckCursorOverLink(TMP_Text textComponent) { /* unchanged */ }
-   // private string FormatMessageWithClickableLinks(string message) { /* unchanged */ }
+    // private IEnumerator CheckCursorOverLink(TMP_Text textComponent) { /* unchanged */ }
+    // private string FormatMessageWithClickableLinks(string message) { /* unchanged */ }
     private void OnLinkClicked(PointerEventData eventData, TMP_Text textComponent) { /* unchanged */ }
 
     private void OnDisable()

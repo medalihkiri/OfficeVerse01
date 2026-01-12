@@ -9,6 +9,7 @@ using Photon.Pun;
 using Photon.Realtime;
 using ExitGames.Client.Photon;
 using System.Collections.Generic;
+using System;
 
 [System.Serializable]
 public class RoomSceneMapping
@@ -20,6 +21,7 @@ public class RoomSceneMapping
 
 public class RoomManager : MonoBehaviourPunCallbacks
 {
+    public static event Action OnJoinedPhotonLobby;
 
     [Header("Scene per Room Type")]
     public List<RoomSceneMapping> roomSceneMappings;
@@ -32,6 +34,8 @@ public class RoomManager : MonoBehaviourPunCallbacks
     [Header("Room List UI")]
     public GameObject roomButtonPrefab;
     public Transform roomListContainer;
+
+    public string lastJoinedRoomName;
 
     [Header("Create Room UI")]
     public GameObject createRoomPopup;
@@ -77,16 +81,13 @@ public class RoomManager : MonoBehaviourPunCallbacks
     private RoomOptions roomOptions;
     private ExitGames.Client.Photon.Hashtable playerProperties;
 
-    private float heartbeatInterval = 5f;
-    private byte eventCode = 1;
-
     private bool isLoading = false;
-    private bool isCreatingRoom = false;
     private string pendingRoomName = "";
     private string pendingPassword = "";
-    private int pendingMaxPlayers = 0;
-
     private string selectedRoomType;
+
+    public static string CurrentRoomDbId { get; private set; }
+
 
     void Awake()
     {
@@ -108,42 +109,48 @@ public class RoomManager : MonoBehaviourPunCallbacks
         openJoinPopupButton.onClick.AddListener(() => OpenPopup(joinRoomPopup));
         if (cancelLoadingButton != null)
             cancelLoadingButton.onClick.AddListener(CancelLoading);
-
-        if (!PhotonNetwork.IsConnected)
-            ConnectToPhoton();
-
-        InvokeRepeating(nameof(SendHeartbeat), heartbeatInterval, heartbeatInterval);
     }
 
-    void ConnectToPhoton()
+    public void ConnectToPhoton()
     {
-        PhotonNetwork.PhotonServerSettings.AppSettings.FixedRegion = "eu"; // Example: "us", "eu", "asia"
+        if (PhotonNetwork.IsConnected)
+        {
+            Debug.Log("[Auth] Already connected to Photon. Joining lobby.");
+            PhotonNetwork.JoinLobby();
+            return;
+        }
 
+        if (APIManager.Instance != null && APIManager.Instance.isLoggedIn)
+        {
+            string backendUserId = APIManager.Instance.userId;
+            if (!string.IsNullOrEmpty(backendUserId))
+            {
+                Debug.Log($"[Auth] Setting Photon UserId to backend ID: {backendUserId}");
+                PhotonNetwork.AuthValues = new AuthenticationValues(backendUserId);
+            }
+            PhotonNetwork.NickName = APIManager.Instance.username;
+        }
+        else
+        {
+            Debug.Log("[Auth] Not logged in. Connecting to Photon as a guest.");
+        }
+
+        PhotonNetwork.PhotonServerSettings.AppSettings.FixedRegion = "eu";
         Debug.Log($"Attempting to connect to Photon in fixed region: {PhotonNetwork.PhotonServerSettings.AppSettings.FixedRegion}...");
         PhotonNetwork.ConnectUsingSettings();
     }
 
-    void Update()
+    public override void OnLeftRoom()
     {
-        if (!PhotonNetwork.IsConnected && Application.internetReachability != NetworkReachability.NotReachable)
-            ConnectToPhoton();
+        Debug.Log("Successfully left the Photon room. Now in Master Server lobby.");
+        ShowRoomPopup();
     }
 
     void OpenPopup(GameObject popupToOpen)
     {
-        if (popupToOpen == joinRoomPopup || popupToOpen == createRoomPopup)
-        {
-            joinRoomPopup.SetActive(false);
-            createRoomPopup.SetActive(false);
-            popupToOpen.SetActive(true);
-        }
-        else
-        {
-            mainPopup.SetActive(false);
-            RoomPopup.SetActive(false);
-            popupToOpen.SetActive(true);
-        }
-
+        joinRoomPopup.SetActive(false);
+        createRoomPopup.SetActive(false);
+        popupToOpen.SetActive(true);
         ClearStatus();
     }
 
@@ -165,18 +172,27 @@ public class RoomManager : MonoBehaviourPunCallbacks
         if (characterCustomizationButton != null)
             characterCustomizationButton.SetActive(true);
 
-        ClearStatus();
+        // FIX: Set a personalized welcome message in the room panel status text.
+        if (APIManager.Instance != null && APIManager.Instance.isLoggedIn)
+        {
+            statusText.text = $"Welcome back, {APIManager.Instance.username}!";
+        }
+        else
+        {
+            statusText.text = "Connected as Guest. Create or join a 'Casual' room.";
+        }
+
         ClearRoomList();
 
         roomTypeDropdown.ClearOptions();
-        if (PlayerDataManager.IsAuthenticated)
+        if (APIManager.Instance.isLoggedIn)
         {
-            roomTypeDropdown.AddOptions(new List<string> { "Casual", "Work", "Conference" });
+            roomTypeDropdown.AddOptions(new List<string> { "casual", "work", "classroom" });
             StartCoroutine(LoadUserRooms());
         }
         else
         {
-            roomTypeDropdown.AddOptions(new List<string> { "Casual" });
+            roomTypeDropdown.AddOptions(new List<string> { "casual" });
         }
     }
 
@@ -202,9 +218,10 @@ public class RoomManager : MonoBehaviourPunCallbacks
 
     #region Create Room
 
-    // **FIXED**: Logic is now split. Guests go directly to Photon.
     void OnCreateRoomSubmit()
     {
+        APIManager.Instance.SetCurrentRoomDbId(null);
+
         string roomName = createRoomNameInput.text.Trim();
         bool isPrivate = privateRoomToggle.isOn;
         string password = createRoomPasswordInput.text;
@@ -213,47 +230,36 @@ public class RoomManager : MonoBehaviourPunCallbacks
 
         if (string.IsNullOrEmpty(roomName))
         {
-            statusText.text = "⚠ Room name cannot be empty.";
+            statusText.text = "Room name cannot be empty.";
             return;
         }
 
-        // --- GUEST WORKFLOW ---
-        if (!PlayerDataManager.IsAuthenticated)
+        if (!APIManager.Instance.isLoggedIn)
         {
             if (isPrivate || selectedRoomType != "casual")
             {
-                statusText.text = "⚠ Guests can only create public, Casual rooms.";
+                statusText.text = "Guests can only create public, Casual rooms.";
                 return;
             }
-
-            // *** FIX: Assign a new random UserId for this session to prevent conflicts ***
-            // This makes every guest join a fresh one, avoiding the 'inactive UserId' error.
             PhotonNetwork.AuthValues = new AuthenticationValues($"guest_{System.Guid.NewGuid()}");
-
             isLoading = true;
             LoadingPanel.SetActive(true);
             loadingStatusText.text = "Creating room...";
             StartPhotonCreateRoom(roomName, maxPlayers, isPrivate, password);
         }
-        // --- AUTHENTICATED USER WORKFLOW ---
         else
         {
-            isCreatingRoom = true;
             pendingRoomName = roomName;
             pendingPassword = password;
-            pendingMaxPlayers = maxPlayers;
-
             isLoading = true;
             LoadingPanel.SetActive(true);
             loadingStatusText.text = "Registering room with server...";
 
-            // --- COMPLETED LOGIC ---
-            // Create the payload with all the room details from the UI.
             RoomCreatePayload payload = new RoomCreatePayload
             {
                 name = roomName,
                 isPrivate = isPrivate,
-                password = isPrivate ? password : "", // Only send a password if the room is private
+                password = isPrivate ? password : "",
                 maxPlayers = maxPlayers,
                 type = selectedRoomType
             };
@@ -263,23 +269,28 @@ public class RoomManager : MonoBehaviourPunCallbacks
             {
                 if (res != null && res.result == UnityWebRequest.Result.Success)
                 {
+                    RoomResponseSingle roomResponse = JsonUtility.FromJson<RoomResponseSingle>(res.downloadHandler.text);
+                    if (roomResponse != null && roomResponse.room != null)
+                    {
+                        APIManager.Instance.SetCurrentRoomDbId(roomResponse.room._id);
+                    }
                     loadingStatusText.text = "Creating room on game network...";
                     StartPhotonCreateRoom(roomName, maxPlayers, isPrivate, password);
                 }
                 else
                 {
-                    if (res != null && res.responseCode == 409) // 409 Conflict
+                    if (res != null && res.responseCode == 409)
                     {
-                        statusText.text = "❌ A room with this name already exists.";
+                        statusText.text = "A room with this name already exists.";
                     }
-                    else if (res != null && res.responseCode == 401) // 401 Unauthorized
+                    else if (res != null && res.responseCode == 401)
                     {
-                        statusText.text = "❌ Your session has expired. Please log in again.";
+                        statusText.text = "Your session has expired. Please log in again.";
                         APIManager.Instance.HandleSessionExpired();
                     }
                     else
                     {
-                        statusText.text = "❌ Failed to create room on server.";
+                        statusText.text = "Failed to create room on server.";
                     }
                     ResetLoadingState();
                 }
@@ -287,50 +298,33 @@ public class RoomManager : MonoBehaviourPunCallbacks
         }
     }
 
-
     void StartPhotonCreateRoom(string roomName, int maxPlayers, bool isPrivate, string password)
     {
         if (!PhotonNetwork.IsConnected)
         {
-            statusText.text = "❌ Not connected to Photon.";
+            statusText.text = "Not connected to Photon. Please wait.";
             ResetLoadingState();
+            ConnectToPhoton();
             return;
         }
-
-        if (!PhotonNetwork.InLobby)
-        {
-            PhotonNetwork.JoinLobby();
-            PlayerPrefs.SetString("PendingRoomCreation", JsonUtility.ToJson(new PendingRoomData { roomName = roomName, maxPlayers = maxPlayers, isPrivate = isPrivate, password = password, roomType = selectedRoomType }));
-            return;
-        }
-
-        if (PhotonNetwork.InRoom)
-        {
-            PhotonNetwork.LeaveRoom();
-            PlayerPrefs.SetString("PendingRoomCreation", JsonUtility.ToJson(new PendingRoomData { roomName = roomName, maxPlayers = maxPlayers, isPrivate = isPrivate, password = password, roomType = selectedRoomType }));
-            return;
-        }
-
         CreatePhotonRoomNow(roomName, maxPlayers, isPrivate, password, selectedRoomType);
     }
 
-    #endregion
-
     void CreatePhotonRoomNow(string roomName, int maxPlayers, bool isPrivate, string password, string roomType)
     {
-        string passwordHash = isPrivate ? ComputeSHA256Hash(password) : "";
         string sceneName = GetSceneForRoomTypeSafe(roomType);
 
         roomOptions = new RoomOptions
         {
             MaxPlayers = (byte)Mathf.Clamp(maxPlayers, 1, 50),
+            PlayerTtl = 3000,
             CustomRoomProperties = new ExitGames.Client.Photon.Hashtable
             {
-                { "isPrivate", isPrivate }, { "passwordHash", passwordHash }, { "roomType", roomType }, { "scene", sceneName }
+                { "isPrivate", isPrivate },
+                { "roomType", roomType },
+                { "scene", sceneName }
             },
             CustomRoomPropertiesForLobby = new string[] { "isPrivate", "roomType", "scene" },
-            EmptyRoomTtl = 10000,
-            PlayerTtl = 3000,
             PublishUserId = true
         };
 
@@ -338,21 +332,24 @@ public class RoomManager : MonoBehaviourPunCallbacks
         if (!PhotonNetwork.CreateRoom(roomName, roomOptions, TypedLobby.Default))
         {
             ResetLoadingState();
-            statusText.text = "❌ Failed to create room.";
+            statusText.text = "Failed to create room on Photon.";
         }
     }
 
+    #endregion
+
     #region Join Room
 
-    // **FIXED**: Logic is now split. Guests go directly to Photon.
     void OnJoinRoomSubmit()
     {
+        APIManager.Instance.SetCurrentRoomDbId(null);
+
         string roomName = joinRoomNameInput.text.Trim();
         string password = joinRoomPasswordInput.text;
 
         if (string.IsNullOrEmpty(roomName))
         {
-            statusText.text = "⚠ Room name cannot be empty.";
+            statusText.text = "Room name cannot be empty.";
             return;
         }
 
@@ -360,17 +357,11 @@ public class RoomManager : MonoBehaviourPunCallbacks
         LoadingPanel.SetActive(true);
         loadingStatusText.text = "Joining room...";
 
-        // --- GUEST WORKFLOW ---
-        if (!PlayerDataManager.IsAuthenticated)
+        if (!APIManager.Instance.isLoggedIn)
         {
-            // *** FIX: Assign a new random UserId for this session to prevent conflicts ***
             PhotonNetwork.AuthValues = new AuthenticationValues($"guest_{System.Guid.NewGuid()}");
-            isLoading = true;
-            LoadingPanel.SetActive(true);
-            loadingStatusText.text = "Joining room...";
-            StartPhotonJoinRoom(roomName, maxPlayersDefault, false, "");
+            StartPhotonJoinRoom(roomName);
         }
-        // --- AUTHENTICATED USER WORKFLOW ---
         else
         {
             pendingRoomName = roomName;
@@ -382,20 +373,18 @@ public class RoomManager : MonoBehaviourPunCallbacks
     IEnumerator LoadUserRooms()
     {
         ClearRoomList();
-
         yield return APIManager.Instance.Get("/rooms/user", (res) =>
         {
-            if (res.result != UnityWebRequest.Result.Success) return;
-
+            if (res == null || res.result != UnityWebRequest.Result.Success) return;
             RoomListResponse roomList = JsonUtility.FromJson<RoomListResponse>(res.downloadHandler.text);
+            if (roomList == null || roomList.rooms == null) return;
+
             foreach (RoomData room in roomList.rooms)
             {
                 GameObject buttonObj = Instantiate(roomButtonPrefab, roomListContainer);
                 var buttonText = buttonObj.GetComponentInChildren<TextMeshProUGUI>();
                 var buttonComp = buttonObj.GetComponent<Button>();
-
                 if (buttonText != null) buttonText.text = room.name;
-
                 if (buttonComp != null)
                 {
                     buttonComp.onClick.RemoveAllListeners();
@@ -411,18 +400,17 @@ public class RoomManager : MonoBehaviourPunCallbacks
     }
 
     [System.Serializable]
-    public class RoomListResponse { public bool success; public List<RoomData> rooms; }
+    public class RoomListResponse { public List<RoomData> rooms; }
 
     IEnumerator FindRoomByNameAndJoin(string roomName, string password)
     {
         string encodedName = UnityWebRequest.EscapeURL(roomName);
-
         yield return APIManager.Instance.Get($"/rooms/find/{encodedName}", (res) =>
         {
-            if (res.result != UnityWebRequest.Result.Success)
+            if (res == null || res.result != UnityWebRequest.Result.Success)
             {
                 ResetLoadingState();
-                statusText.text = "❌ Room not found.";
+                statusText.text = "Room not found on server.";
                 return;
             }
 
@@ -430,69 +418,52 @@ public class RoomManager : MonoBehaviourPunCallbacks
             if (response == null || response.room == null)
             {
                 ResetLoadingState();
-                statusText.text = "❌ Room not found.";
+                statusText.text = "Room data could not be parsed.";
                 return;
             }
+            APIManager.Instance.SetCurrentRoomDbId(response.room._id);
 
             if (!response.room.isPrivate)
             {
-                StartPhotonJoinRoom(roomName, response.room.maxPlayers, false, "");
+                StartPhotonJoinRoom(roomName);
                 return;
             }
 
-            // This is the call that can fail for a wrong password
             string json = JsonUtility.ToJson(new JoinRoomPayload { password = password });
             StartCoroutine(APIManager.Instance.Post($"/rooms/{response.room._id}/join", json, (joinRes) =>
             {
-                // **FIXED**: Better error handling in the callback.
-                if (joinRes.result == UnityWebRequest.Result.Success)
+                if (joinRes != null && joinRes.result == UnityWebRequest.Result.Success)
                 {
-                    StartPhotonJoinRoom(roomName, response.room.maxPlayers, true, password);
+                    StartPhotonJoinRoom(roomName);
                 }
                 else
                 {
-                    // Check for specific, recoverable 401 error
-                    if (joinRes.responseCode == 401)
+                    if (joinRes != null && joinRes.responseCode == 401)
                     {
-                        statusText.text = "❌ Invalid Password.";
+                        statusText.text = "Invalid Password.";
                     }
                     else
                     {
-                        statusText.text = "❌ You do not have permission to join this room.";
+                        statusText.text = "You do not have permission to join this room.";
                     }
-                    ResetLoadingState(); // Reset loading UI, but DO NOT log out.
+                    ResetLoadingState();
                 }
             }, requireAuth: true));
-
         }, requireAuth: true);
     }
 
-
-    void StartPhotonJoinRoom(string roomName, int maxPlayers, bool isPrivate, string password)
+    void StartPhotonJoinRoom(string roomName)
     {
         if (!PhotonNetwork.IsConnected)
         {
             ResetLoadingState();
-            statusText.text = "❌ Not connected to Photon.";
+            statusText.text = "Not connected to Photon.";
+            ConnectToPhoton();
             return;
         }
-
-        if (!PhotonNetwork.InLobby)
-        {
-            PhotonNetwork.JoinLobby();
-            PlayerPrefs.SetString("PendingRoomJoin", JsonUtility.ToJson(new PendingRoomData { roomName = roomName, maxPlayers = maxPlayers, isPrivate = isPrivate, password = password }));
-            return;
-        }
-
-        if (PhotonNetwork.InRoom)
-        {
-            PhotonNetwork.LeaveRoom();
-            PlayerPrefs.SetString("PendingRoomJoin", JsonUtility.ToJson(new PendingRoomData { roomName = roomName, maxPlayers = maxPlayers, isPrivate = isPrivate, password = password }));
-            return;
-        }
-
         JoinPhotonRoomNow(roomName);
     }
+
     #endregion
 
     void JoinPhotonRoomNow(string roomName)
@@ -501,35 +472,7 @@ public class RoomManager : MonoBehaviourPunCallbacks
         if (!PhotonNetwork.JoinRoom(roomName))
         {
             ResetLoadingState();
-            statusText.text = "❌ Failed to join room.";
-        }
-    }
-
-    public override void OnJoinedLobby()
-    {
-        base.OnJoinedLobby();
-        Debug.Log("✅ Successfully joined the default lobby.");
-
-        // Now check for any pending actions that were cached while connecting.
-        string pendingCreation = PlayerPrefs.GetString("PendingRoomCreation", "");
-        string pendingJoin = PlayerPrefs.GetString("PendingRoomJoin", "");
-
-        if (!string.IsNullOrEmpty(pendingCreation))
-        {
-            PlayerPrefs.DeleteKey("PendingRoomCreation");
-            PendingRoomData data = JsonUtility.FromJson<PendingRoomData>(pendingCreation);
-            CreatePhotonRoomNow(data.roomName, data.maxPlayers, data.isPrivate, data.password, data.roomType);
-        }
-        else if (!string.IsNullOrEmpty(pendingJoin))
-        {
-            PlayerPrefs.DeleteKey("PendingRoomJoin");
-            PendingRoomData data = JsonUtility.FromJson<PendingRoomData>(pendingJoin);
-            JoinPhotonRoomNow(data.roomName);
-        }
-        else if (!isLoading)
-        {
-            LoadingPanel.SetActive(false);
-            statusText.text = "Ready to join or create room!";
+            statusText.text = "Failed to join room on Photon.";
         }
     }
 
@@ -537,39 +480,33 @@ public class RoomManager : MonoBehaviourPunCallbacks
 
     void UpdatePlayerData(string roomName)
     {
-        string playerName = "";
-
-        // First try to get from the visible input field
-        if (playerNameInput != null && !string.IsNullOrWhiteSpace(playerNameInput.text))
+        string playerName;
+        if (APIManager.Instance.isLoggedIn)
         {
-            playerName = playerNameInput.text.Trim();
+            playerName = APIManager.Instance.username;
         }
-        // If empty, try saved PlayerDataManager
-        else if (!string.IsNullOrWhiteSpace(PlayerDataManager.PlayerName))
+        else
         {
-            playerName = PlayerDataManager.PlayerName;
+            playerName = $"Guest{UnityEngine.Random.Range(1000, 9999)}";
         }
-
-        // If still empty, fall back to Guest
-        if (string.IsNullOrWhiteSpace(playerName))
-        {
-            playerName = "Guest" + Random.Range(1000, 9999);
-        }
-
-        // Save to PlayerDataManager
-        PlayerDataManager.PlayerName = playerName;
-
-        // Make sure UI matches
-        if (playerNameInput != null)
-            playerNameInput.text = playerName;
-
-        // Store extra info
-        PlayerDataManager.PlayerRoomName = roomName;
-        PlayerDataManager.PlayerAvatar = avatarSelection.selectedAvatarIndex;
-
-        // Apply to Photon
         PhotonNetwork.LocalPlayer.NickName = playerName;
-        playerProperties["avatar"] = avatarSelection.selectedAvatarIndex;
+
+        int avatarIndex = 0;
+        if (avatarSelection != null)
+        {
+            avatarIndex = avatarSelection.selectedAvatarIndex;
+        }
+        else
+        {
+            Debug.LogWarning("AvatarSelection component not assigned in RoomManager Inspector. Defaulting to avatar 0.");
+        }
+        playerProperties["avatar"] = avatarIndex;
+
+
+        if (APIManager.Instance.isLoggedIn)
+        {
+            playerProperties["backendUserId"] = APIManager.Instance.userId;
+        }
         PhotonNetwork.LocalPlayer.SetCustomProperties(playerProperties);
     }
 
@@ -580,19 +517,21 @@ public class RoomManager : MonoBehaviourPunCallbacks
     public override void OnConnectedToMaster()
     {
         base.OnConnectedToMaster();
-        // This log is CRITICAL. It confirms which region you actually connected to.
-        Debug.Log($"✅ Successfully connected to Photon Master Server in region: {PhotonNetwork.CloudRegion}. Now joining lobby...");
+        Debug.Log($"Successfully connected to Photon Master Server in region: {PhotonNetwork.CloudRegion}. Now joining lobby...");
         PhotonNetwork.JoinLobby();
+    }
+
+    public override void OnJoinedLobby()
+    {
+        base.OnJoinedLobby();
+        Debug.Log("Successfully joined the default lobby.");
+        OnJoinedPhotonLobby?.Invoke();
     }
 
     public override void OnJoinedRoom()
     {
-        PlayerPrefs.DeleteKey("PendingRoomCreation");
-        PlayerPrefs.DeleteKey("PendingRoomJoin");
-
-        if (!ValidateGuestAccess()) return;
-
-        if (PlayerDataManager.IsAuthenticated) StartCoroutine(LoadUserRooms());
+        lastJoinedRoomName = PhotonNetwork.CurrentRoom.Name;
+        Debug.Log("[Photon] Joined room: " + lastJoinedRoomName);
 
         string sceneName = GetSceneFromRoomProperties();
         ResetLoadingState();
@@ -621,34 +560,12 @@ public class RoomManager : MonoBehaviourPunCallbacks
         return "GameScene_Default";
     }
 
-    bool ValidateGuestAccess()
-    {
-        if (!PlayerDataManager.IsAuthenticated)
-        {
-            if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue("roomType", out object roomTypeObj))
-            {
-                if (roomTypeObj.ToString().ToLower() != "casual")
-                {
-                    PhotonNetwork.LeaveRoom();
-                    ResetLoadingState();
-                    statusText.text = "❌ Guests can only join Casual rooms.";
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
     public override void OnJoinRoomFailed(short returnCode, string message)
     {
         base.OnJoinRoomFailed(returnCode, message);
-        Debug.LogError($"❌ JOIN ROOM FAILED: Code={returnCode}, Message='{message}'");
-
+        Debug.LogError($"JOIN ROOM FAILED: Code={returnCode}, Message='{message}'");
         const short GAME_DOES_NOT_EXIST = 32758;
-
-        // The self-healing logic now only applies to authenticated users,
-        // as guests don't have a backend record to restore from.
-        if (returnCode == GAME_DOES_NOT_EXIST && PlayerDataManager.IsAuthenticated)
+        if (returnCode == GAME_DOES_NOT_EXIST && APIManager.Instance.isLoggedIn)
         {
             Debug.LogWarning("Room not found on Photon. Attempting to re-create from backend data.");
             StartCoroutine(HandleRoomNotFoundOnPhoton(pendingRoomName));
@@ -656,7 +573,7 @@ public class RoomManager : MonoBehaviourPunCallbacks
         else
         {
             ResetLoadingState();
-            statusText.text = $"❌ Failed to join room: {message}";
+            statusText.text = $"Failed to join room: {message}";
         }
     }
 
@@ -665,14 +582,13 @@ public class RoomManager : MonoBehaviourPunCallbacks
         if (string.IsNullOrEmpty(roomName))
         {
             ResetLoadingState();
-            statusText.text = "❌ Cannot sync room: name is missing.";
+            statusText.text = "Cannot sync room: name is missing.";
             yield break;
         }
 
-        if (LoadingPanel != null) LoadingPanel.SetActive(true);
         isLoading = true;
+        LoadingPanel.SetActive(true);
         loadingStatusText.text = "Syncing room with server...";
-
         string encodedName = UnityWebRequest.EscapeURL(roomName);
 
         yield return APIManager.Instance.Get($"/rooms/find/{encodedName}", (res) =>
@@ -680,114 +596,74 @@ public class RoomManager : MonoBehaviourPunCallbacks
             if (res.result != UnityWebRequest.Result.Success)
             {
                 ResetLoadingState();
-                statusText.text = "❌ Room not found.";
+                statusText.text = "Room not found on the main server.";
                 return;
             }
-
             RoomResponseSingle response = JsonUtility.FromJson<RoomResponseSingle>(res.downloadHandler.text);
             if (response == null || response.room == null)
             {
                 ResetLoadingState();
-                statusText.text = "❌ Room not found.";
+                statusText.text = "Room data could not be retrieved.";
                 return;
             }
 
             loadingStatusText.text = "Re-creating room on network...";
-
             var roomData = response.room;
             CreatePhotonRoomNow(roomData.name, roomData.maxPlayers, roomData.isPrivate, pendingPassword, roomData.type);
-
         }, requireAuth: true);
     }
 
     public override void OnCreateRoomFailed(short returnCode, string message)
     {
         base.OnCreateRoomFailed(returnCode, message);
-
-        if (returnCode == 32766) // ErrorCode.RoomAlreadyExists
+        const short ROOM_ALREADY_EXISTS = 32766;
+        if (returnCode == ROOM_ALREADY_EXISTS)
         {
-            loadingStatusText.text = "Joining existing room...";
+            loadingStatusText.text = "Room already exists. Joining...";
             JoinPhotonRoomNow(pendingRoomName);
         }
         else
         {
             ResetLoadingState();
-            statusText.text = $"❌ Create room failed: {message}";
+            statusText.text = $"Create room failed: {message}";
         }
     }
 
     public override void OnDisconnected(DisconnectCause cause)
     {
-
         base.OnDisconnected(cause);
-        Debug.LogError($"❌ Disconnected from Photon: {cause}. Will attempt to reconnect via Update loop.");
+        Debug.LogError($"Disconnected from Photon: {cause}.");
         ResetLoadingState();
-        if (cause == DisconnectCause.ClientTimeout || cause == DisconnectCause.ServerTimeout)
+        /*if (cause == DisconnectCause.Exception || cause == DisconnectCause.ClientTimeout || cause == DisconnectCause.ServerTimeout)
         {
-            statusText.text = "Reconnecting...";
-            PhotonNetwork.ConnectUsingSettings();
-        }
-        else
+            statusText.text = "Connection lost. Reconnecting...";
+            ConnectToPhoton();
+        }*/
+        /*else
         {
-            statusText.text = "Disconnected: " + cause.ToString();
-        }
+            statusText.text = "Disconnected. Please check your connection.";
+        }*/
     }
 
     public void PrepareRoomUI() { ShowRoomPopup(); }
     public void ClearRoomList() { foreach (Transform child in roomListContainer) Destroy(child.gameObject); }
 
-    void SendHeartbeat() { if (PhotonNetwork.IsConnected) PhotonNetwork.RaiseEvent(eventCode, null, RaiseEventOptions.Default, SendOptions.SendUnreliable); }
-
-    #endregion
-
-    #region Utilities
-
-    string ComputeSHA256Hash(string rawData)
-    {
-        using (SHA256 sha256Hash = SHA256.Create())
-        {
-            byte[] bytes = sha256Hash.ComputeHash(Encoding.UTF8.GetBytes(rawData));
-            StringBuilder builder = new StringBuilder();
-            foreach (var b in bytes) builder.Append(b.ToString("x2"));
-            return builder.ToString();
-        }
-    }
-
-    #endregion
-
-    IEnumerator TimeoutProtection()
-    {
-        while (true)
-        {
-            yield return new WaitForSeconds(30f);
-            if (isLoading && LoadingPanel.activeInHierarchy)
-            {
-                ResetLoadingState();
-                statusText.text = "❌ Operation timed out. Please try again.";
-            }
-        }
-    }
-
     void ResetLoadingState()
     {
         isLoading = false;
-        isCreatingRoom = false;
-        LoadingPanel.SetActive(false);
+        if (LoadingPanel != null) LoadingPanel.SetActive(false);
     }
 
-    [System.Serializable]
-    public class PendingRoomData { public string roomName; public int maxPlayers; public bool isPrivate; public string password; public string roomType; }
-
     #region Payload Classes
-
     [System.Serializable]
-    public class RoomResponseSingle { public bool success; public RoomData room; }
+    public class RoomResponseSingle { public RoomData room; }
     [System.Serializable]
     public class RoomCreatePayload { public string name; public bool isPrivate; public string password; public int maxPlayers; public string type; }
     [System.Serializable]
     public class JoinRoomPayload { public string password; }
     [System.Serializable]
     public class RoomData { public string _id; public string name; public bool isPrivate; public int maxPlayers; public string type; }
+    #endregion 
 
-    #endregion
 }
+    #endregion 

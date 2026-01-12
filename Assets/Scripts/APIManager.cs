@@ -1,4 +1,5 @@
-﻿using System;
+﻿// --- START OF FILE APIManager.cs ---
+using System;
 using System.Collections;
 using System.Text;
 using UnityEngine;
@@ -9,16 +10,17 @@ public class APIManager : MonoBehaviour
     public static APIManager Instance;
 
     [Header("Config")]
-    public string apiBaseUrl = "https://officeverseback.onrender.com";
+    public string apiBaseUrl = "http://localhost:3000";
     public float requestTimeout = 10f;
 
-    [Header("Runtime Data")]
+    [Header("Runtime Session Data")]
     public string authToken;
     public string username;
     public string userId;
+    public string CurrentRoomDbId { get; private set; }
     public bool isLoggedIn => !string.IsNullOrEmpty(authToken);
 
-    public static event Action OnTokenExpired; // UI can subscribe to this
+    public static event Action OnTokenExpired;
 
     private const string TOKEN_KEY = "auth_token";
     private const string USERNAME_KEY = "username";
@@ -38,8 +40,13 @@ public class APIManager : MonoBehaviour
         }
     }
 
-    #region Token Management
+    public void SetCurrentRoomDbId(string roomDbId)
+    {
+        CurrentRoomDbId = roomDbId;
+        Debug.Log($"[APIManager] Session room ID set to: {roomDbId}");
+    }
 
+    #region Token Management
     public void SaveToken(string token, string username, string userId)
     {
         authToken = token;
@@ -64,28 +71,24 @@ public class APIManager : MonoBehaviour
         authToken = "";
         username = "";
         userId = "";
+        CurrentRoomDbId = null;
 
         PlayerPrefs.DeleteKey(TOKEN_KEY);
         PlayerPrefs.DeleteKey(USERNAME_KEY);
         PlayerPrefs.DeleteKey(USERID_KEY);
         PlayerPrefs.Save();
-
-        Debug.Log("🗑 Token cleared from memory and storage.");
+        Debug.Log("🗑 Token and session data cleared.");
     }
 
-    // **NEW**: This method is now used ONLY when a session is confirmed to be expired.
     public void HandleSessionExpired()
     {
         Debug.LogWarning("⚠ Session has expired or is invalid. Forcing logout.");
         ClearToken();
-        PlayerDataManager.IsAuthenticated = false;
-        OnTokenExpired?.Invoke(); // Tell UI to return to login
+        OnTokenExpired?.Invoke();
     }
-
     #endregion
 
     #region API Helpers
-
     private bool RequireAuthCheck(bool requireAuth)
     {
         if (requireAuth && !isLoggedIn)
@@ -96,63 +99,67 @@ public class APIManager : MonoBehaviour
         return true;
     }
 
+    public IEnumerator Get(string endpoint, Action<UnityWebRequest> callback, bool requireAuth = false)
+    {
+        if (!RequireAuthCheck(requireAuth)) { callback?.Invoke(null); yield break; }
+        using UnityWebRequest req = UnityWebRequest.Get(apiBaseUrl + endpoint);
+        req.SetRequestHeader("Content-Type", "application/json");
+        if (requireAuth) req.SetRequestHeader("Authorization", "Bearer " + authToken);
+        req.timeout = (int)requestTimeout;
+        yield return req.SendWebRequest();
+        LogRequestResult("GET", endpoint, req);
+        callback?.Invoke(req);
+    }
+
     public IEnumerator Post(string endpoint, string jsonBody, Action<UnityWebRequest> callback, bool requireAuth = false)
     {
-        if (!RequireAuthCheck(requireAuth))
-        {
-            callback?.Invoke(null);
-            yield break;
-        }
-
+        if (!RequireAuthCheck(requireAuth)) { callback?.Invoke(null); yield break; }
         using UnityWebRequest req = new UnityWebRequest(apiBaseUrl + endpoint, "POST");
         byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
         req.uploadHandler = new UploadHandlerRaw(bodyRaw);
         req.downloadHandler = new DownloadHandlerBuffer();
         req.SetRequestHeader("Content-Type", "application/json");
-
         if (requireAuth) req.SetRequestHeader("Authorization", "Bearer " + authToken);
-
         req.timeout = (int)requestTimeout;
         yield return req.SendWebRequest();
-
-        // **REMOVED**: HandleAuthError is no longer called here. The caller is now responsible.
         LogRequestResult("POST", endpoint, req);
         callback?.Invoke(req);
     }
 
-    public IEnumerator Get(string endpoint, Action<UnityWebRequest> callback, bool requireAuth = false)
+    // --- NEW METHOD ---
+    public IEnumerator Put(string endpoint, string jsonBody, Action<UnityWebRequest> callback, bool requireAuth = false)
     {
-        if (!RequireAuthCheck(requireAuth))
-        {
-            callback?.Invoke(null);
-            yield break;
-        }
-
-        using UnityWebRequest req = UnityWebRequest.Get(apiBaseUrl + endpoint);
+        if (!RequireAuthCheck(requireAuth)) { callback?.Invoke(null); yield break; }
+        using UnityWebRequest req = new UnityWebRequest(apiBaseUrl + endpoint, "PUT");
+        byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
+        req.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        req.downloadHandler = new DownloadHandlerBuffer();
         req.SetRequestHeader("Content-Type", "application/json");
-
         if (requireAuth) req.SetRequestHeader("Authorization", "Bearer " + authToken);
-
         req.timeout = (int)requestTimeout;
         yield return req.SendWebRequest();
+        LogRequestResult("PUT", endpoint, req);
+        callback?.Invoke(req);
+    }
 
-        // **REMOVED**: HandleAuthError is no longer called here. The caller is now responsible.
-        LogRequestResult("GET", endpoint, req);
+    // --- NEW METHOD ---
+    public IEnumerator Delete(string endpoint, Action<UnityWebRequest> callback, bool requireAuth = false)
+    {
+        if (!RequireAuthCheck(requireAuth)) { callback?.Invoke(null); yield break; }
+        using UnityWebRequest req = UnityWebRequest.Delete(apiBaseUrl + endpoint);
+        req.downloadHandler = new DownloadHandlerBuffer(); // Useful for getting error messages
+        if (requireAuth) req.SetRequestHeader("Authorization", "Bearer " + authToken);
+        req.timeout = (int)requestTimeout;
+        yield return req.SendWebRequest();
+        LogRequestResult("DELETE", endpoint, req);
         callback?.Invoke(req);
     }
 
     private void LogRequestResult(string method, string endpoint, UnityWebRequest req)
     {
-        if (req.result == UnityWebRequest.Result.Success)
-        {
-            Debug.Log($"✅ {method} {endpoint} -> {req.responseCode}");
-        }
-        else
-        {
-            // Now providing more detail in error logs for easier debugging.
-            Debug.LogError($"❌ {method} {endpoint} failed -> Code: {req.responseCode}, Result: {req.result}, Error: {req.error}\nResponse: {req.downloadHandler.text}");
-        }
+        if (req.result == UnityWebRequest.Result.Success) { Debug.Log($"✅ {method} {endpoint} -> {req.responseCode}"); }
+        else { Debug.LogError($"❌ {method} {endpoint} failed -> Code: {req.responseCode}, Result: {req.result}, Error: {req.error}\nResponse: {req.downloadHandler.text}"); }
     }
-
     #endregion
 }
+// --- END OF FILE APIManager.cs ---

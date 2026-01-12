@@ -10,90 +10,47 @@ public class UserControlsUI : MonoBehaviour
     private SpatialRoom currentRoom;
     public Sprite lockedIcon;
     public Sprite unlockedIcon;
+    private bool isMicInitialized = false;
 
-    public Button audioButton, videoButton, screenShareButton, leaveRoomButton, mapViewButton, meetingViewButton;
-    [SerializeField] private Sprite enableAudio, disableAudio, enableVideo, disableVideo;
+    // --- MODIFICATION START ---
+    [Header("Control Buttons")]
+    public Button audioButton, videoButton, screenShareButton, leaveRoomButton, mapViewButton, meetingViewButton, broadcastButton;
+    [SerializeField] private Sprite enableAudio, disableAudio, enableVideo, disableVideo, enableBroadcast, disableBroadcast;
+    // --- MODIFICATION END ---
 
-    [SerializeField] private GameObject uiElement1, uiElement2; 
-    [SerializeField] private Image imageComponent; 
+    [SerializeField] private GameObject uiElement1, uiElement2;
+    [SerializeField] private Image imageComponent;
 
-    [SerializeField] private RectTransform screenShareRectTransform; 
+    [SerializeField] private RectTransform screenShareRectTransform;
 
-    private Vector2 originalScreenShareSizeDelta;
-    private Vector2 originalScreenShareAnchorMin;
-    private Vector2 originalScreenShareAnchorMax;
-    private Vector2 originalScreenSharePivot;
-    private Vector2 originalScreenShareAnchoredPosition;
-
+    private Vector2 originalScreenShareSizeDelta, originalScreenShareAnchorMin, originalScreenShareAnchorMax, originalScreenSharePivot, originalScreenShareAnchoredPosition;
     private Vector2 smallScreenShareSizeDelta = new Vector2(433, 266.6864f);
     private Vector2 smallScreenShareAnchorMin = new Vector2(0.5f, 1);
     private Vector2 smallScreenShareAnchorMax = new Vector2(0.5f, 1);
     private Vector2 smallScreenSharePivot = new Vector2(0.5f, 1);
     private Vector2 smallScreenShareAnchoredPosition = new Vector2(0, 50);
 
-    public float animationTime = 0.5f; 
+    public float animationTime = 0.5f;
 
     public bool isMapViewActive = false;
-    private bool audioEnabled, videoEnabled, screenShareEnabled;
+    private bool audioEnabled, videoEnabled, screenShareEnabled, broadcastEnabled;
 
     [SerializeField] private TextMeshProUGUI pingText;
 
     [System.Runtime.InteropServices.DllImport("__Internal")]
     private static extern void SetButtonHoverState(string gameObjectName, bool isHovering);
 
-    public bool AudioEnabled
-    {
-        get 
-        { 
-            return audioEnabled; 
-        }
-        set
-        {
-            audioEnabled = value;
-            SetAudioState();
-        }
-    }
-
-    public bool VideoEnabled
-    {
-        get
-        {
-            return videoEnabled;
-        }
-        set
-        {
-            videoEnabled = value;
-            SetVideoState();
-        }
-    }
+    public bool AudioEnabled { get { return audioEnabled; } set { audioEnabled = value; SetAudioState(); } }
+    public bool VideoEnabled { get { return videoEnabled; } set { videoEnabled = value; SetVideoState(); } }
+    public bool BroadcastEnabled { get { return broadcastEnabled; } set { broadcastEnabled = value; SetBroadcastState(); } }
 
     public bool ScreenShareEnabled
     {
-        get
-        {
-            return screenShareEnabled;
-        }
+        get { return screenShareEnabled; }
         set
         {
             screenShareEnabled = value;
-            videoButton.interactable = !value; // Disable video button when screen sharing
-            
-            //if (value)
-            //{
-            //    // When enabling screen share, ensure video is off
-            //    if (VideoEnabled)
-            //    {
-            //        videoButton.onClick.Invoke();
-            //    }
-            //}
-            //else 
-            //{
-            //    // When disabling screen share, turn video back on
-            //    if (!VideoEnabled)
-            //    {
-            //        videoButton.onClick.Invoke();
-            //    }
-            //}
+            videoButton.interactable = !value;
         }
     }
 
@@ -104,20 +61,20 @@ public class UserControlsUI : MonoBehaviour
         AudioEnabled = false;
         VideoEnabled = false;
         ScreenShareEnabled = false;
+        BroadcastEnabled = false;
 
-        // Add right-click handler to screen share
         var rightClickHandler = screenShareRectTransform.gameObject.AddComponent<ScreenShareClickHandler>();
         rightClickHandler.userControlsUI = this;
 
-        audioButton.onClick.RemoveAllListeners();
-        videoButton.onClick.RemoveAllListeners();
-        screenShareButton.onClick.RemoveAllListeners();
-        leaveRoomButton.onClick.RemoveAllListeners();
-
         audioButton.onClick.AddListener(() =>
         {
+            if (!isMicInitialized)
+            {
+                GameManager.Instance.agoraClientManager.InitializeAndEnableLocalAudio();
+                isMicInitialized = true;
+            }
             AudioEnabled = !AudioEnabled;
-            GameManager.Instance.agoraClientManager.SetLocalAudioState(AudioEnabled);
+            GameManager.Instance.myPlayer.SendAudioState(AudioEnabled);
         });
 
         videoButton.onClick.AddListener(() =>
@@ -128,14 +85,18 @@ public class UserControlsUI : MonoBehaviour
 
         screenShareButton.onClick.AddListener(() =>
         {
-            //ScreenShareEnabled = !ScreenShareEnabled;
             GameManager.Instance.agoraClientManager.SetScreenShareState(!ScreenShareEnabled);
         });
 
-        leaveRoomButton.onClick.AddListener(() =>
+        // --- MODIFICATION START ---
+        broadcastButton.onClick.AddListener(() =>
         {
-            GameManager.Instance.LeaveRoom();
+            BroadcastEnabled = !BroadcastEnabled;
+            GameManager.Instance.myPlayer.SetBroadcastState(BroadcastEnabled);
         });
+        // --- MODIFICATION END ---
+
+        leaveRoomButton.onClick.AddListener(() => GameManager.Instance.LeaveRoom());
 
         originalScreenShareSizeDelta = screenShareRectTransform.sizeDelta;
         originalScreenShareAnchorMin = screenShareRectTransform.anchorMin;
@@ -145,7 +106,7 @@ public class UserControlsUI : MonoBehaviour
 
         mapViewButton.onClick.AddListener(OnMapViewButtonClicked);
         meetingViewButton.onClick.AddListener(OnMeetingViewButtonClicked);
-        meetingViewButton.gameObject.SetActive(false); 
+        meetingViewButton.gameObject.SetActive(false);
     }
 
     private void Update()
@@ -163,10 +124,6 @@ public class UserControlsUI : MonoBehaviour
             isMapViewActive = true;
             meetingViewButton.gameObject.SetActive(true);
             StartCoroutine(AnimateToMapView());
-
-#if UNITY_WEBGL && !UNITY_EDITOR
-        SetButtonHoverState(mapViewButton.gameObject.name, false);
-#endif
         }
     }
 
@@ -194,12 +151,12 @@ public class UserControlsUI : MonoBehaviour
 
         while (elapsedTime < animationTime)
         {
-            screenShareRectTransform.sizeDelta = Vector2.Lerp(startSizeDelta, smallScreenShareSizeDelta, (elapsedTime / animationTime));
-            screenShareRectTransform.anchorMin = Vector2.Lerp(startAnchorMin, smallScreenShareAnchorMin, (elapsedTime / animationTime));
-            screenShareRectTransform.anchorMax = Vector2.Lerp(startAnchorMax, smallScreenShareAnchorMax, (elapsedTime / animationTime));
-            screenShareRectTransform.pivot = Vector2.Lerp(startPivot, smallScreenSharePivot, (elapsedTime / animationTime));
-            screenShareRectTransform.anchoredPosition = Vector2.Lerp(startAnchoredPosition, smallScreenShareAnchoredPosition, (elapsedTime / animationTime));
-
+            float ratio = elapsedTime / animationTime;
+            screenShareRectTransform.sizeDelta = Vector2.Lerp(startSizeDelta, smallScreenShareSizeDelta, ratio);
+            screenShareRectTransform.anchorMin = Vector2.Lerp(startAnchorMin, smallScreenShareAnchorMin, ratio);
+            screenShareRectTransform.anchorMax = Vector2.Lerp(startAnchorMax, smallScreenShareAnchorMax, ratio);
+            screenShareRectTransform.pivot = Vector2.Lerp(startPivot, smallScreenSharePivot, ratio);
+            screenShareRectTransform.anchoredPosition = Vector2.Lerp(startAnchoredPosition, smallScreenShareAnchoredPosition, ratio);
             elapsedTime += Time.deltaTime;
             yield return null;
         }
@@ -222,12 +179,12 @@ public class UserControlsUI : MonoBehaviour
 
         while (elapsedTime < animationTime)
         {
-            screenShareRectTransform.sizeDelta = Vector2.Lerp(startSizeDelta, originalScreenShareSizeDelta, (elapsedTime / animationTime));
-            screenShareRectTransform.anchorMin = Vector2.Lerp(startAnchorMin, originalScreenShareAnchorMin, (elapsedTime / animationTime));
-            screenShareRectTransform.anchorMax = Vector2.Lerp(startAnchorMax, originalScreenShareAnchorMax, (elapsedTime / animationTime));
-            screenShareRectTransform.pivot = Vector2.Lerp(startPivot, originalScreenSharePivot, (elapsedTime / animationTime));
-            screenShareRectTransform.anchoredPosition = Vector2.Lerp(startAnchoredPosition, originalScreenShareAnchoredPosition, (elapsedTime / animationTime));
-
+            float ratio = elapsedTime / animationTime;
+            screenShareRectTransform.sizeDelta = Vector2.Lerp(startSizeDelta, originalScreenShareSizeDelta, ratio);
+            screenShareRectTransform.anchorMin = Vector2.Lerp(startAnchorMin, originalScreenShareAnchorMin, ratio);
+            screenShareRectTransform.anchorMax = Vector2.Lerp(startAnchorMax, originalScreenShareAnchorMax, ratio);
+            screenShareRectTransform.pivot = Vector2.Lerp(startPivot, originalScreenSharePivot, ratio);
+            screenShareRectTransform.anchoredPosition = Vector2.Lerp(startAnchoredPosition, originalScreenShareAnchoredPosition, ratio);
             elapsedTime += Time.deltaTime;
             yield return null;
         }
@@ -247,14 +204,20 @@ public class UserControlsUI : MonoBehaviour
     private void SetAudioState()
     {
         audioButton.image.sprite = audioEnabled ? enableAudio : disableAudio;
-        audioButton.transform.Find("Background").GetComponent<Image>().sprite = audioEnabled ? enableAudio : disableAudio;
     }
 
     private void SetVideoState()
     {
         videoButton.image.sprite = videoEnabled ? enableVideo : disableVideo;
-        videoButton.transform.Find("Background").GetComponent<Image>().sprite = videoEnabled ? enableVideo : disableVideo;
     }
+
+    // --- MODIFICATION START ---
+    private void SetBroadcastState()
+    {
+        if (broadcastButton == null) return;
+        broadcastButton.image.sprite = broadcastEnabled ? enableBroadcast : disableBroadcast;
+    }
+    // --- MODIFICATION END ---
 
     public void SetScreenShareButtonState(bool interactable)
     {
@@ -276,38 +239,10 @@ public class UserControlsUI : MonoBehaviour
         }
 
         lockRoomButton.gameObject.SetActive(true);
-        Image lockIcon = lockRoomButton.transform.Find("Icon").GetComponent<Image>();
-        ButtonHoverEffect hoverEffect = lockRoomButton.GetComponent<ButtonHoverEffect>();
+        Image lockIconImage = lockRoomButton.transform.Find("Icon").GetComponent<Image>();
 
-        if (currentRoom.IsLocked)
-        {
-            lockIcon.sprite = lockedIcon;
-            if (hoverEffect != null)
-            {
-                Destroy(hoverEffect.tooltipInstance);
-                if (PhotonNetwork.LocalPlayer.ActorNumber == currentRoom.LockingPlayerId)
-                {
-                    hoverEffect.tooltipText = "Unlock meeting area";
-                }
-                else
-                {
-                    hoverEffect.tooltipText = "Unlock meeting area";
-                }
-                hoverEffect.CreateTooltip();
-            }
-            lockRoomButton.interactable = true;
-        }
-        else
-        {
-            lockIcon.sprite = unlockedIcon;
-            lockRoomButton.interactable = true;
-            if (hoverEffect != null)
-            {
-                Destroy(hoverEffect.tooltipInstance);
-                hoverEffect.tooltipText = "Lock meeting area";
-                hoverEffect.CreateTooltip();
-            }
-        }
+        lockIconImage.sprite = currentRoom.IsLocked ? lockedIcon : unlockedIcon;
+        lockRoomButton.interactable = true;
     }
 
     public void SetVideoButtonState(bool interactable)
@@ -323,6 +258,5 @@ public class UserControlsUI : MonoBehaviour
         }
     }
 
-    // Expose the meeting view button for external access
     public Button MeetingViewButton => meetingViewButton;
 }

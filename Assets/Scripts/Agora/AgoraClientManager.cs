@@ -38,8 +38,12 @@ public class AgoraClientManager : MonoBehaviour
 
         // Initialize audio properly
         mRtcEngine.EnableAudio();
-        mRtcEngine.EnableLocalAudio(true); // Enable local audio to trigger permission request
-        mRtcEngine.MuteLocalAudioStream(true); // But mute it initially
+        //mRtcEngine.EnableLocalAudio(false); // Enable local audio to trigger permission request
+        /*try
+        {
+            mRtcEngine.MuteLocalAudioStream(true); // But mute it initially
+        }
+        catch { }*/
 
         mRtcEngine.EnableVideo();
         mRtcEngine.EnableVideoObserver();
@@ -73,6 +77,19 @@ public class AgoraClientManager : MonoBehaviour
         mRtcEngine.OnUserOffline += OnUserOfflineHandler;
 
         mRtcEngine.OnError += OnErrorHandler;
+    }
+
+    public void InitializeAndEnableLocalAudio()
+    {
+        if (mRtcEngine != null)
+        {
+            // This will trigger the browser's microphone permission prompt on WebGL.
+            mRtcEngine.EnableLocalAudio(true);
+
+            // Immediately mute the stream. The user's intent is to unmute later, but this
+            // ensures we don't start transmitting audio right after permission is granted.
+            mRtcEngine.MuteLocalAudioStream(true);
+        }
     }
 
     public void JoinChannel()
@@ -159,7 +176,7 @@ public class AgoraClientManager : MonoBehaviour
         Debug.Log($"########## OnScreenShareStarted channel: {channelName} id: {uid} elapsed: {elapsed}");
         UpdateScreenShareState(true, uid);
 
-        SetLocalVideoState(true);
+        //SetLocalVideoState(true);
     }
 
     void OnScreenShareStopped(string channelName, uint uid, int elapsed)
@@ -170,7 +187,7 @@ public class AgoraClientManager : MonoBehaviour
         Debug.Log($"########## OnScreenShareStopped channel: {channelName} id: {uid} elapsed: {elapsed}");
         UpdateScreenShareState(false, uid);
 
-        SetLocalVideoState(false);
+        //SetLocalVideoState(false);
     }
 
     void OnScreenShareCancelled(string channelName, uint uid, int elapsed)
@@ -181,38 +198,26 @@ public class AgoraClientManager : MonoBehaviour
         Debug.Log($"########## OnScreenShareCancelled channel: {channelName} id: {uid} elapsed: {elapsed}");
         UpdateScreenShareState(false, uid);
 
-        SetLocalVideoState(false);
+        //SetLocalVideoState(false);
     }
 
     void OnLocalAudioStateChanged(LOCAL_AUDIO_STREAM_STATE state, LOCAL_AUDIO_STREAM_ERROR reason)
     {
-        // -------------------- MODIFICATION START --------------------
-        // GUARD CLAUSE: Before trying to send a Photon message, we MUST ensure Photon is
-        // in a state to send them. This prevents errors during the disconnect process.
-        // We also check if GameManager and the player object exist to avoid NullReferenceExceptions.
-        if (!PhotonNetwork.IsConnectedAndReady || GameManager.Instance == null || GameManager.Instance.myPlayer == null)
+        /*Debug.Log($"########## OnLocalAudioStateChanged state: {state} reason: {reason}");
+
+        if (state == LOCAL_AUDIO_STREAM_STATE.LOCAL_AUDIO_STREAM_STATE_RECORDING)
         {
-            return;
+            mRtcEngine.MuteLocalAudioStream(true); // safe to mute here
         }
-        // -------------------- MODIFICATION END --------------------
 
-        Debug.Log($"########## OnLocalAudioStateChanged state: {state} reason: {reason}");
+        bool enable = state == LOCAL_AUDIO_STREAM_STATE.LOCAL_AUDIO_STREAM_STATE_RECORDING ||
+                      state == LOCAL_AUDIO_STREAM_STATE.LOCAL_AUDIO_STREAM_STATE_ENCODING;
 
-        bool enable = state == LOCAL_AUDIO_STREAM_STATE.LOCAL_AUDIO_STREAM_STATE_RECORDING || state == LOCAL_AUDIO_STREAM_STATE.LOCAL_AUDIO_STREAM_STATE_ENCODING;
-
-        GameManager.Instance.myPlayer.SendAudioState(enable);
+        GameManager.Instance.myPlayer.SendAudioState(enable);*/
     }
 
     void OnLocalVideoStateChanged(LOCAL_VIDEO_STREAM_STATE state, LOCAL_VIDEO_STREAM_ERROR reason)
     {
-        // -------------------- MODIFICATION START --------------------
-        // GUARD CLAUSE: Add the same check here for video state changes.
-        if (!PhotonNetwork.IsConnectedAndReady || GameManager.Instance == null || GameManager.Instance.myPlayer == null)
-        {
-            return;
-        }
-        // -------------------- MODIFICATION END --------------------
-
         Debug.Log($"########## OnLocalVideoStateChanged state: {state} reason: {reason}");
 
         bool enable = state == LOCAL_VIDEO_STREAM_STATE.LOCAL_VIDEO_STREAM_STATE_CAPTURING || state == LOCAL_VIDEO_STREAM_STATE.LOCAL_VIDEO_STREAM_STATE_ENCODING;
@@ -224,15 +229,8 @@ public class AgoraClientManager : MonoBehaviour
     public void SetLocalVideoState(bool enable)
     {
         if (mRtcEngine == null) return;
-        mRtcEngine.EnableLocalVideo(enable);
 
-        // -------------------- MODIFICATION START --------------------
-        // GUARD CLAUSE: Also protect manual calls that sync state over Photon.
-        if (!PhotonNetwork.IsConnectedAndReady || GameManager.Instance == null || GameManager.Instance.myPlayer == null)
-        {
-            return;
-        }
-        // -------------------- MODIFICATION END --------------------
+        mRtcEngine.EnableLocalVideo(enable);
 
         GameManager.Instance.myPlayer.SendVideoState(enable);
     }
@@ -240,17 +238,17 @@ public class AgoraClientManager : MonoBehaviour
     public void SetLocalAudioState(bool enable)
     {
         if (mRtcEngine == null) return;
+
         mRtcEngine.EnableLocalAudio(enable);
 
-        // -------------------- MODIFICATION START --------------------
-        // GUARD CLAUSE: Protect this manual call as well.
-        if (!PhotonNetwork.IsConnectedAndReady || GameManager.Instance == null || GameManager.Instance.myPlayer == null)
-        {
-            return;
-        }
-        // -------------------- MODIFICATION END --------------------
-
         GameManager.Instance.myPlayer.SendAudioState(enable);
+    }
+
+    public void SetOfflineAudioState(bool enable)
+    {
+        if (mRtcEngine == null) return;
+
+        mRtcEngine.EnableLocalAudio(enable);
     }
 
     //for starting/stopping a new screen share through IRtcEngine class.
@@ -268,15 +266,8 @@ public class AgoraClientManager : MonoBehaviour
 
     private void UpdateScreenShareState(bool enable, uint uid)
     {
-        // -------------------- MODIFICATION START --------------------
-        // GUARD CLAUSE: Protect this method that sends a Photon message.
-        if (!PhotonNetwork.IsConnectedAndReady || GameManager.Instance == null || GameManager.Instance.myPlayer == null)
-        {
-            return;
-        }
-        // -------------------- MODIFICATION END --------------------
-
         GameManager.Instance.myPlayer.SendScreenShareState(enable);
+
     }
 
     private void OnDestroy()
@@ -288,21 +279,11 @@ public class AgoraClientManager : MonoBehaviour
             mRtcEngine.DisableVideoObserver();
             IRtcEngine.Destroy();
         }
-
     }
 
     internal void SetVideoSurfaceForPlayer(uint uid, int elapsed)
     {
         PlayerController playerController = null;
-
-        // -------------------- MODIFICATION START --------------------
-        // SAFETY CHECK: Ensure GameManager and its list exist before trying to access them.
-        if (GameManager.Instance == null || GameManager.Instance.otherPlayers == null)
-        {
-            Debug.LogWarning("SetVideoSurfaceForPlayer: GameManager instance or otherPlayers list is not available.");
-            return;
-        }
-        // -------------------- MODIFICATION END --------------------
 
         for (int i = 0; i < GameManager.Instance.otherPlayers.Count; i++)
         {
@@ -315,8 +296,7 @@ public class AgoraClientManager : MonoBehaviour
 
         if (playerController == null)
         {
-            // It's possible the player object hasn't been fully initialized yet, so this might not be an error.
-            Debug.LogWarning("SetVideoSurfaceForPlayer: Could not find PlayerController for UID: " + uid + ". It may not have spawned yet.");
+            Debug.LogError("Player Controller is null");
             return;
         }
 

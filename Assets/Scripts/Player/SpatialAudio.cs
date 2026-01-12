@@ -1,3 +1,5 @@
+﻿// --- START OF FILE SpatialAudio.cs ---
+
 using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
@@ -6,206 +8,273 @@ using Photon.Realtime;
 
 public class SpatialAudio : MonoBehaviourPunCallbacks
 {
-    // --- Existing Variables ---
-    [SerializeField] private float radius;
-    private PhotonView PV;
-    private IRtcEngine agoraRtcEngine;
-    private static readonly Dictionary<Player, SpatialAudio> spatialAudioFromPlayers = new Dictionary<Player, SpatialAudio>();
-    private bool isInRoom = false;
-    private int currentRoomId = 0;
+    // --- Constants ---
+    public const string AUDIO_RADIUS_PROP = "AudioRadius";
 
-    // -------------------- MODIFICATION START --------------------
+    // --- Serialized Fields ---
+    [Header("Settings")]
+    [Tooltip("Initial radius.")]
+    [SerializeField] private float radius = 5f;
 
-    [Header("Radius Control & Visualization")]
-
-    /// <summary>
-    /// The UI GameObject for the circle visualizer. Assign this in the Inspector.
-    /// It should be a child of the player prefab.
-    /// </summary>
-    [Tooltip("The UI GameObject for the circle visualizer. Assign this in the Inspector.")]
-    public GameObject radiusVisualizer;
-
-    /// <summary>
-    /// How fast the radius changes when scrolling.
-    /// </summary>
     [Tooltip("How fast the radius changes when scrolling.")]
     public float radiusChangeSpeed = 5f;
 
-    /// <summary>
-    /// The minimum allowed audio radius.
-    /// </summary>
     [Tooltip("The minimum allowed audio radius.")]
     public float minRadius = 2f;
 
-    /// <summary>
-    /// The maximum allowed audio radius.
-    /// </summary>
     [Tooltip("The maximum allowed audio radius.")]
     public float maxRadius = 25f;
 
-    // Private reference to the local player's controller to check mic status.
+    [Header("Visuals")]
+    [Tooltip("The UI GameObject for the circle visualizer. Assign this in the Inspector.")]
+    public GameObject radiusVisualizer;
+
+    [Tooltip("Calibration factor. Set to 1 if your sprite is exactly 1 unit wide. Adjust if sprite is smaller/larger.")]
+    public float visualizerScaleMultiplier = 1f;
+
+    // --- Private Variables ---
+    private PhotonView PV;
+    private IRtcEngine agoraRtcEngine;
     private PlayerController myPlayerController;
+    private Transform _myTransform;
 
-    // -------------------- MODIFICATION END --------------------
+    // State
+    private bool isInRoom = false;
+    private int currentRoomId = 0;
 
+    // Caching for Network Optimization
+    private float lastSyncedRadius = -1f;
+    private float lastScrollTime = 0f;
+    private const float SYNC_DELAY = 0.1f; // Faster sync response
 
     void Awake()
     {
         PV = GetComponent<PhotonView>();
-        spatialAudioFromPlayers[PV.Owner] = this;
-
-        // -------------------- MODIFICATION START --------------------
-        // Get the PlayerController component on this same GameObject.
+        _myTransform = transform;
         myPlayerController = GetComponent<PlayerController>();
 
-        // Ensure the visualizer is assigned in the Inspector, but only for the local player.
-        if (PV.IsMine)
+        if (radiusVisualizer == null)
         {
-            if (radiusVisualizer == null)
-            {
-                Debug.LogError("[SpatialAudio] The 'Radius Visualizer' GameObject has not been assigned in the Inspector!");
-            }
+            var viz = transform.Find("RadiusVisualizer");
+            if (viz != null) radiusVisualizer = viz.gameObject;
         }
-        // -------------------- MODIFICATION END --------------------
     }
 
-    void OnDestroy()
+    void Start()
     {
-        spatialAudioFromPlayers.Remove(PV.Owner);
+        if (PV.IsMine)
+        {
+            SyncRadius(true);
+        }
     }
 
     void Update()
     {
-        if (!PV.IsMine) return; // Only run on the local player
+        // 1. Input Handling (Local Only)
+        if (PV.IsMine)
+        {
+            HandleRadiusInput();
+            UpdateSpatialVolumes();
+        }
 
-        // -------------------- MODIFICATION START --------------------
-        // Handle the input for changing the radius and manage the visualizer's state.
-        HandleRadiusInput();
+        // 2. Visualization (All Clients)
         HandleVisualizer();
-        // -------------------- MODIFICATION END --------------------
-
-        // --- This existing spatial audio logic remains unchanged ---
-        if (agoraRtcEngine == null)
-        {
-            agoraRtcEngine = GameManager.Instance.agoraClientManager.mRtcEngine;
-        }
-
-        foreach (Player player in PhotonNetwork.PlayerList)
-        {
-            if (player == PV.Owner) continue; // Skip local player
-            if (!player.CustomProperties.TryGetValue("agoraID", out object agoraIDObj)) continue;
-            uint agoraID = uint.Parse(agoraIDObj.ToString());
-
-            int volume;
-            if (isInRoom)
-            {
-                if (SpatialRoom.PlayersInRooms.TryGetValue(player.ActorNumber, out int playerRoomId))
-                {
-                    volume = (playerRoomId == currentRoomId) ? 100 : 0;
-                }
-                else
-                {
-                    volume = 0;
-                }
-            }
-            else
-            {
-                if (SpatialRoom.PlayersInRooms.ContainsKey(player.ActorNumber))
-                {
-                    volume = 0;
-                }
-                else
-                {
-                    if (!player.CustomProperties.TryGetValue("Name", out object NameObj)) continue;
-                    string objName = NameObj.ToString();
-                    GameObject otherPlayerObj = GameObject.Find(objName);
-
-                    if (otherPlayerObj != null)
-                    {
-                        Vector3 otherPosition = otherPlayerObj.transform.position;
-                        float distance = Vector3.Distance(transform.position, otherPosition);
-                        volume = GetVolume(distance);
-                    }
-                    else
-                    {
-                        volume = 0;
-                    }
-                }
-            }
-            agoraRtcEngine.AdjustUserPlaybackSignalVolume(agoraID, volume);
-        }
     }
 
-    // -------------------- MODIFICATION START --------------------
-    /// <summary>
-    /// Checks for user input (holding 'A' and scrolling) to adjust the audio radius.
-    /// </summary>
     private void HandleRadiusInput()
     {
-        // Check if the 'A' key is being held down.
+        // Only allow changing radius if mic is actually enabled (optional UX choice, keeps it clean)
+        // or always allow it. Let's always allow it so user can prep their radius.
         if (Input.GetKey(KeyCode.X))
         {
-            // Get the mouse scroll wheel input.
             float scrollInput = Input.GetAxis("Mouse ScrollWheel");
 
-            // If there is any scroll input, adjust the radius.
             if (Mathf.Abs(scrollInput) > 0.01f)
             {
-                // Modify the radius based on scroll direction and speed.
                 radius += scrollInput * radiusChangeSpeed;
-
-                // Clamp the radius within the defined min/max values.
                 radius = Mathf.Clamp(radius, minRadius, maxRadius);
+                lastScrollTime = Time.time;
             }
         }
+
+        // Sync radius over network if changed
+        if (Mathf.Abs(radius - lastSyncedRadius) > 0.01f && (Time.time - lastScrollTime > SYNC_DELAY))
+        {
+            SyncRadius();
+        }
     }
 
-    /// <summary>
-    /// Manages the visibility and scale of the radius visualization circle.
-    /// </summary>
+    private void SyncRadius(bool force = false)
+    {
+        if (!PV.IsMine) return;
+
+        lastSyncedRadius = radius;
+
+        var props = new ExitGames.Client.Photon.Hashtable();
+        props[AUDIO_RADIUS_PROP] = radius;
+        PhotonNetwork.LocalPlayer.SetCustomProperties(props);
+    }
+
+    private float GetRemoteRadius(Player player)
+    {
+        if (player.CustomProperties.TryGetValue(AUDIO_RADIUS_PROP, out object radiusObj))
+        {
+            return System.Convert.ToSingle(radiusObj);
+        }
+        return radius; // Fallback
+    }
+
     private void HandleVisualizer()
     {
-        if (radiusVisualizer == null || myPlayerController == null) return;
+        if (radiusVisualizer == null) return;
 
-        // Condition 1: Is the user currently holding the 'A' key?
-        bool isChangingRadius = Input.GetKey(KeyCode.A);
-
-        // Condition 2: Is the player's microphone UI object active?
-        bool isMicOn = myPlayerController.playerAudioObject.activeSelf;
-
-        // The visualizer should be active if EITHER condition is true.
-        bool shouldBeVisible = isChangingRadius || isMicOn;
-
-        // Set the active state of the visualizer object.
-        if (radiusVisualizer.activeSelf != shouldBeVisible)
+        // If in a Room (SpatialRoom), radius logic is overridden by Room Logic (Infinite/Global).
+        // Hiding the radius circle avoids confusion since distance limits don't apply inside the room.
+        if (isInRoom)
         {
-            radiusVisualizer.SetActive(shouldBeVisible);
+            if (radiusVisualizer.activeSelf) radiusVisualizer.SetActive(false);
+            return;
         }
 
-        // If the visualizer is visible, update its scale to match the current radius.
-        if (shouldBeVisible)
-        {
-            // We multiply by 2 because scale is based on diameter, while our radius is... a radius.
-            float diameter = radius * 2f;
-            radiusVisualizer.transform.localScale = new Vector3(diameter, diameter, 1f);
-        }
-    }
-    // -------------------- MODIFICATION END --------------------
+        bool isMicOn = false;
+        float currentDisplayRadius = radius;
+        bool isMine = PV.IsMine;
 
-    private int GetVolume(float distance)
-    {
-        if (distance <= 0)
+        // --- Step A: Determine State ---
+        if (isMine)
         {
-            return 100;
-        }
-        else if (distance >= radius)
-        {
-            return 0;
+            bool isAdjusting = Input.GetKey(KeyCode.X);
+            isMicOn = myPlayerController != null && myPlayerController.playerAudioObject.activeSelf;
+            currentDisplayRadius = radius;
+
+            // Show if Mic is ON or if user is actively adjusting settings
+            radiusVisualizer.SetActive(isMicOn || isAdjusting);
         }
         else
         {
-            return (int)(100 * (1 - distance / radius));
+            if (PV.Owner.CustomProperties.TryGetValue(PlayerController.IS_AUDIO_ENABLED_PROP, out object isAudioEnabledObj))
+            {
+                isMicOn = (bool)isAudioEnabledObj;
+            }
+            currentDisplayRadius = GetRemoteRadius(PV.Owner);
+
+            // For remote players, only show if they are actually talking (Mic On)
+            radiusVisualizer.SetActive(isMicOn);
         }
+
+        // --- Step B: Precise Scaling ---
+        if (radiusVisualizer.activeSelf)
+        {
+            // 1. Calculate Target World Diameter
+            float worldDiameter = currentDisplayRadius * 2f;
+
+            // 2. Compensate for Parent Scale
+            // If Parent is scaled (0.5), child needs scale (20) to be world size (10).
+            // Formula: RequiredLocalScale = TargetWorldSize / ParentWorldScale
+            float parentScale = transform.lossyScale.x;
+            if (Mathf.Abs(parentScale) < 0.001f) parentScale = 1f; // Prevent div by zero
+
+            float compensatedDiameter = (worldDiameter / parentScale) * visualizerScaleMultiplier;
+
+            // 3. Animation (Breathing)
+            if (isMicOn)
+            {
+                float pulse = 1f + (Mathf.Sin(Time.time * 4f) * 0.03f); // Subtle 3% pulse
+                compensatedDiameter *= pulse;
+            }
+
+            // 4. Color/Opacity Logic (Optional - helps visualize interaction)
+            // If I am inside this remote player's radius, maybe tint it?
+            // For now, keeping it simple as requested: just correct sizing.
+
+            radiusVisualizer.transform.localScale = new Vector3(compensatedDiameter, compensatedDiameter, 1f);
+        }
+    }
+
+    private int GetVolumeForDistance(float distance, float emitterRadius)
+    {
+        if (distance <= 0) return 100;
+        if (distance >= emitterRadius) return 0;
+        return (int)(100 * (1 - distance / emitterRadius));
+    }
+
+    private void UpdateSpatialVolumes()
+    {
+        if (!PV.IsMine) return;
+
+        if (agoraRtcEngine == null)
+            agoraRtcEngine = GameManager.Instance.agoraClientManager.mRtcEngine;
+
+        if (agoraRtcEngine == null) return;
+
+        bool localPlayerIsInRoom = isInRoom;
+        int localPlayerRoomId = currentRoomId;
+
+        foreach (Player otherPlayer in PhotonNetwork.PlayerListOthers)
+        {
+            if (!otherPlayer.CustomProperties.TryGetValue("agoraID", out object agoraIDObj)) continue;
+            uint agoraID = uint.Parse(agoraIDObj.ToString());
+
+            bool shouldBeAudible = false;
+            int finalVolume = 0;
+
+            bool isRemoteMicIntentionallyOn = otherPlayer.CustomProperties.TryGetValue(PlayerController.IS_AUDIO_ENABLED_PROP, out object isMicOnObj) && (bool)isMicOnObj;
+            bool isRemoteBroadcasting = otherPlayer.CustomProperties.TryGetValue(PlayerController.IS_BROADCASTING_PROP, out object isBroadcastingObj) && (bool)isBroadcastingObj;
+
+            if (isRemoteBroadcasting)
+            {
+                if (isRemoteMicIntentionallyOn)
+                {
+                    shouldBeAudible = true;
+                    finalVolume = 100;
+                }
+            }
+            else if (isRemoteMicIntentionallyOn)
+            {
+                int otherPlayerRoomId = 0;
+                if (otherPlayer.CustomProperties.TryGetValue("inRoom", out object otherRoomIdObj))
+                {
+                    otherPlayerRoomId = (int)otherRoomIdObj;
+                }
+                bool otherPlayerIsInRoom = otherPlayerRoomId != 0;
+
+                if (localPlayerIsInRoom && otherPlayerIsInRoom)
+                {
+                    if (localPlayerRoomId == otherPlayerRoomId)
+                    {
+                        shouldBeAudible = true;
+                        finalVolume = 100;
+                    }
+                }
+                else if (!localPlayerIsInRoom && !otherPlayerIsInRoom)
+                {
+                    PlayerController otherPlayerController = GameManager.Instance.GetPlayerByActorNumber(otherPlayer.ActorNumber);
+                    if (otherPlayerController != null)
+                    {
+                        float distance = Vector3.Distance(transform.position, otherPlayerController.transform.position);
+
+                        // CRITICAL: Use the Remote Player's Broadcasted Radius
+                        float emitterRadius = GetRemoteRadius(otherPlayer);
+
+                        finalVolume = GetVolumeForDistance(distance, emitterRadius);
+
+                        if (finalVolume > 0)
+                        {
+                            shouldBeAudible = true;
+                        }
+                    }
+                }
+            }
+
+            agoraRtcEngine.AdjustUserPlaybackSignalVolume(agoraID, finalVolume);
+            agoraRtcEngine.MuteRemoteAudioStream(agoraID, !shouldBeAudible);
+        }
+    }
+
+    public void ForceUpdateSpatialVolumes()
+    {
+        if (!PV.IsMine) return;
+        UpdateSpatialVolumes();
     }
 
     public void SetInRoom(bool inRoom, int roomId)
@@ -213,4 +282,7 @@ public class SpatialAudio : MonoBehaviourPunCallbacks
         isInRoom = inRoom;
         currentRoomId = roomId;
     }
+
+    public float Radius => radius;
 }
+// --- END OF FILE SpatialAudio.cs ---
